@@ -30,6 +30,14 @@ interface GameState {
     // Robot State
     isSitting: boolean;
     setSitting: (sitting: boolean) => void;
+
+    // Agent Inspection State
+    hoveredAgentId: string | null;
+    setHoveredAgentId: (id: string | null) => void;
+    inspectedAgentId: string | null;
+    setInspectedAgentId: (id: string | null) => void;
+    isChatOpen: boolean;
+    setChatOpen: (isOpen: boolean) => void;
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -58,4 +66,14 @@ export const useGameStore = create<GameState>((set) => ({
 
     isSitting: false,
     setSitting: (sitting) => set({ isSitting: sitting }),
+
+    // Agent Inspection State
+    hoveredAgentId: null,
+    setHoveredAgentId: (id: string | null) => set({ hoveredAgentId: id }),
+
+    inspectedAgentId: null,
+    setInspectedAgentId: (id: string | null) => set({ inspectedAgentId: id }),
+
+    isChatOpen: false,
+    setChatOpen: (isOpen: boolean) => set({ isChatOpen: isOpen }),
 }));

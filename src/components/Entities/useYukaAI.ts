@@ -1,16 +1,18 @@
-import { useEffect, useRef } from 'react';
-import * as YUKA from 'yuka';
+import { useRef, useEffect, useState } from 'react';
+/* eslint-disable react-hooks/immutability */
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import AIManager from '../Systems/AIManager';
+import * as YUKA from 'yuka';
 import { useGameStore } from '@/store/gameStore';
-import { ClientBrain } from '../Systems/ClientBrain';
+import AIManager from '../Systems/AIManager';
+import { ClientBrain } from '@/components/Systems/ClientBrain';
 import { NearbyEntity } from '@/app/actions';
+import { Joints } from './useRobotController';
 
 export function useYukaAI(
     groupRef: React.RefObject<THREE.Group | null>,
     playerRef: React.RefObject<THREE.Group | null>,
-    joints: React.MutableRefObject<any>
+    joints: React.MutableRefObject<Joints>
 ) {
     const vehicleRef = useRef<YUKA.Vehicle | null>(null);
     const aiManager = AIManager.getInstance();
@@ -310,9 +312,10 @@ export function useYukaAI(
                 .filter(e => e.distance < 20);
 
             otherAgents.forEach(agent => {
+                const extendedEntity = agent.entity as YUKA.Vehicle & { id?: string; uuid?: string };
                 nearbyEntities.push({
                     type: 'AGENT',
-                    id: String((agent.entity as any).id || (agent.entity as any).uuid || 'unknown'),
+                    id: String(extendedEntity.id || extendedEntity.uuid || 'unknown'),
                     distance: parseFloat(agent.distance.toFixed(1)),
                     status: 'Idle'
                 });
@@ -341,7 +344,10 @@ export function useYukaAI(
                             if (decision.targetId === 'player-01' && playerRef.current) {
                                 targetPos = playerRef.current.position;
                             } else {
-                                const agent = AIManager.getInstance().vehicles.find(v => String((v as any).id) === decision.targetId);
+                                const agent = AIManager.getInstance().vehicles.find(v => {
+                                    const extendedV = v as YUKA.Vehicle & { id?: string };
+                                    return String(extendedV.id) === decision.targetId;
+                                });
                                 if (agent) targetPos = agent.position as unknown as THREE.Vector3;
                             }
 

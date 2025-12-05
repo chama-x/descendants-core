@@ -9,9 +9,9 @@ export default function Bridge() {
     const colliderRef = useRef<THREE.Mesh>(null);
 
     // Bridge Configuration
-    const startPos = new THREE.Vector3(0, 5, -120); // Edge of island
-    const endPos = new THREE.Vector3(0, 2, -300);   // Start of hub, slightly elevated
-    const length = startPos.distanceTo(endPos);
+    const startPos = useMemo(() => new THREE.Vector3(0, 5, -120), []); // Edge of island
+    const endPos = useMemo(() => new THREE.Vector3(0, 2, -300), []);   // Start of hub, slightly elevated
+    const length = useMemo(() => startPos.distanceTo(endPos), [startPos, endPos]);
     const width = 8;
     const segmentCount = 20;
     const segmentLength = length / segmentCount;
@@ -19,7 +19,7 @@ export default function Bridge() {
     const { materials } = useMemo(() => {
         const mats = createMaterials();
         return { materials: mats };
-    }, []); ``
+    }, []);
 
     // Generate Instanced Meshes for Bridge Parts
     const { floorMatrices, railingMatrices } = useMemo(() => {
@@ -54,14 +54,15 @@ export default function Bridge() {
         }
 
         return { floorMatrices: floor, railingMatrices: railing };
-    }, [startPos, endPos, length, segmentCount, width]);
+    }, [startPos, endPos, segmentCount, width]);
 
     // Register Collider
     useEffect(() => {
-        if (colliderRef.current) {
-            addCollidableMesh(colliderRef.current);
+        const collider = colliderRef.current;
+        if (collider) {
+            addCollidableMesh(collider);
             return () => {
-                if (colliderRef.current) removeCollidableMesh(colliderRef.current.uuid);
+                removeCollidableMesh(collider.uuid);
             };
         }
     }, [addCollidableMesh, removeCollidableMesh]);

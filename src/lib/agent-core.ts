@@ -11,6 +11,8 @@ export interface AgentContext {
     position: { x: number; y: number; z: number };
     nearbyEntities: NearbyEntity[];
     currentBehavior: string;
+    chatHistory?: { role: 'user' | 'agent', text: string }[];
+    memo?: string | null;
 }
 
 export async function processAgentThought(context: AgentContext): Promise<string> {
@@ -22,32 +24,61 @@ export async function processAgentThought(context: AgentContext): Promise<string
         context.nearbyEntities.map(e => `| ${e.type} | ${e.id || '-'} | ${e.distance}m | ${e.status || '-'} |`).join('\n')
         : "No entities nearby.";
 
-    const prompt = `
+    // Determining Mode: Standard vs Chat
+    const isChatMode = context.chatHistory && context.chatHistory.length > 0;
+
+    let prompt = "";
+
+    if (isChatMode) {
+        prompt = `
+    You are an AI agent in a 3D world, currently conversing with a User.
+    
+    ## Context
+    **Memo (Memory)**: ${context.memo || "None"}
+    **Perception**: ${entityTable}
+    
+    ## Chat History
+    ${context.chatHistory?.map(m => `- ${m.role.toUpperCase()}: ${m.text}`).join('\n')}
+    
+    ## Task
+    Reply to the user. You can also update your 'memo' to remember tasks for later.
+    
+    ## Output Format (JSON ONLY)
+    {
+       "action": "CHAT",
+       "response": "Your reply to the user...",
+       "memo": "Updated short term memory string (optional)"
+    }
+    `;
+    } else {
+        // Standard Autopilot Prompt
+        prompt = `
     You are an AI agent in a 3D world.
     
     ## Context
     **Position**: {x: ${context.position.x.toFixed(1)}, y: ${context.position.y.toFixed(1)}, z: ${context.position.z.toFixed(1)}}
     **Behavior**: ${context.currentBehavior}
+    **Memo (Prior Task)**: ${context.memo || "None"}
 
     ## Perception (Visual)
     ${entityTable}
 
     ## Task
-    Decide your next action based on the perception above.
+    Decide your next action.
     
     ## Output Format (JSON ONLY)
     { 
       "action": "MOVE_TO" | "WAIT" | "WANDER" | "FOLLOW", 
       "targetId"?: "id_of_entity_to_follow", 
       "target"?: {x, y, z}, 
-      "thought": "brief reasoning" 
+      "thought": "brief reasoning",
+      "memo"?: "Update memory if needed"
     }
     
     ## Rules
-    - **FOLLOW**: If you see a 'PLAYER' (< 20m), you MUST decided to 'FOLLOW' them to say hello.
-    - **WANDER**: If no specific entities of interest, explore.
-    - **WAIT**: If idle or thinking.
-  `;
+    - **FOLLOW**: If you see a 'PLAYER' (< 20m), follow them unless you have a specific Memo telling you otherwise.
+    `;
+    }
 
     try {
         const response = await client.models.generateContent({
@@ -66,7 +97,8 @@ export async function processAgentThought(context: AgentContext): Promise<string
         }
 
         // SDK Compatibility: Handle .text as function (v0) or property (v1)
-        const txt = (response as any).text;
+        const resp = response as unknown as { text: string | (() => string) };
+        const txt = resp.text;
         return typeof txt === 'function' ? txt.call(response) : String(txt);
     } catch (error) {
         console.error("Gemini API Error details:", error);

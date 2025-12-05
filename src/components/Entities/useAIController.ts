@@ -171,7 +171,7 @@ export function useAIController(groupRef: React.RefObject<THREE.Group | null>, p
         }
 
         // --- MOVEMENT LOGIC ---
-        let moveDir = new THREE.Vector3();
+        const moveDir = new THREE.Vector3();
         if (desiredSpeed > 0 && s.mode !== 'UNSTUCK') {
             moveDir.subVectors(target, currentPos).normalize();
         } else if (s.mode === 'UNSTUCK') {
@@ -190,7 +190,7 @@ export function useAIController(groupRef: React.RefObject<THREE.Group | null>, p
                 moveDir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 5)
             ];
 
-            let avoidanceForce = new THREE.Vector3();
+            const avoidanceForce = new THREE.Vector3();
             for (const dir of whiskers) {
                 for (const ob of obstacles) {
                     const sphereCenter = ob.position.clone();

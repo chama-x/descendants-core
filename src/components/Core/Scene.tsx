@@ -16,6 +16,7 @@ import StreetLamp from '../World/StreetLamp';
 import GroundLight from '../World/GroundLight';
 import LevelBoundaries from '../Systems/LevelBoundaries';
 import ZoneController from '../Systems/ZoneController';
+import InteractionSystem from '../Systems/InteractionSystem'; // Import here
 import { useGameStore } from '@/store/gameStore';
 import { createWaterNormalMap } from '../Systems/Utilities';
 
@@ -173,6 +174,7 @@ export default function Scene() {
                 <YukaSystem />
                 <LevelBoundaries />
                 <ZoneController robotRef={robotRef} />
+                <InteractionSystem />
                 <CameraRig target={robotRef as React.RefObject<THREE.Group | null>} />
 
                 <Stats />

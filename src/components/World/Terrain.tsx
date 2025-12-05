@@ -191,10 +191,11 @@ export default function Terrain() {
     }, [geometry]);
 
     useEffect(() => {
-        if (terrainRef.current) {
-            addCollidableMesh(terrainRef.current);
+        const terrain = terrainRef.current;
+        if (terrain) {
+            addCollidableMesh(terrain);
             return () => {
-                if (terrainRef.current) removeCollidableMesh(terrainRef.current.uuid);
+                removeCollidableMesh(terrain.uuid);
             };
         }
     }, [addCollidableMesh, removeCollidableMesh]);

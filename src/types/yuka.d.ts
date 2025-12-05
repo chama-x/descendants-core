@@ -1,8 +1,8 @@
 declare module 'yuka' {
     export class EntityManager {
         update(delta: number): void;
-        add(entity: any): void;
-        remove(entity: any): void;
+        add(entity: GameEntity): void;
+        remove(entity: GameEntity): void;
     }
     export class Time {
         update(): number;
@@ -19,7 +19,7 @@ declare module 'yuka' {
         maxForce: number;
         mass: number;
         steering: SteeringManager;
-        setRenderComponent(component: any, callback: (entity: any, renderComponent: any) => void): void;
+        setRenderComponent(component: unknown, callback: (entity: GameEntity, renderComponent: unknown) => void): void;
     }
     export class SteeringManager {
         behaviors: SteeringBehavior[];
@@ -46,25 +46,25 @@ declare module 'yuka' {
         y: number;
         z: number;
         constructor(x?: number, y?: number, z?: number);
-        copy(v: any): this;
+        copy(v: Vector3): this;
         clone(): Vector3;
-        add(v: any): this;
-        sub(v: any): this;
+        add(v: Vector3): this;
+        sub(v: Vector3): this;
         multiplyScalar(s: number): this;
         normalize(): this;
-        distanceTo(v: any): number;
-        squaredDistanceTo(v: any): number;
+        distanceTo(v: Vector3): number;
+        squaredDistanceTo(v: Vector3): number;
         length(): number;
         set(x: number, y: number, z: number): this;
         fromArray(array: number[], offset?: number): this;
         toArray(array: number[], offset?: number): number[];
     }
     export class Quaternion {
-        copy(q: any): this;
+        copy(q: Quaternion): this;
         setFromEuler(x: number, y: number, z: number): this;
         fromEuler(x: number, y: number, z: number): this;
-        slerp(q: any, t: number): this;
-        multiply(q: any): this;
-        rotateByAngularVelocity(omega: any, dt: number): this;
+        slerp(q: Quaternion, t: number): this;
+        multiply(q: Quaternion): this;
+        rotateByAngularVelocity(omega: Vector3, dt: number): this;
     }
 }

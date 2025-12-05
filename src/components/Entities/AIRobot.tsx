@@ -16,7 +16,7 @@ export default function AIRobot({
     // We need to access joints for animation. 
     // Ideally useYukaAI should return joints or we separate animation logic.
     // For now, let's keep the visual structure but we need to re-bind joints.
-    const joints = useRef<any>({});
+    const joints = useRef<Joints>({});
     // Use the new Yuka-powered brain with animation support
     const { vehicle } = useYukaAI(groupRef, playerRef, joints);
 

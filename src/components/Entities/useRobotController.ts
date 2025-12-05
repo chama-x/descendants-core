@@ -74,7 +74,7 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
     const radius = 0.8;
 
     const joints = useRef<Joints>({});
-    const rb = useRef<any>(null);
+
 
     const interactables = useGameStore((state) => state.interactables);
     const isSitting = useGameStore((state) => state.isSitting);
