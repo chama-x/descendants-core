@@ -2,7 +2,9 @@
 
 import React, { useRef, useEffect, useMemo } from 'react';
 import { Canvas, useFrame, useThree, extend } from '@react-three/fiber';
-import { Sky, Stats, Environment, AdaptiveDpr, AdaptiveEvents } from '@react-three/drei';
+import { Stats, Environment, AdaptiveDpr, AdaptiveEvents, ContactShadows } from '@react-three/drei'; // Added ContactShadows
+import { EffectComposer, Bloom, Noise, Vignette, ToneMapping } from '@react-three/postprocessing'; // New imports
+import { BlendFunction } from 'postprocessing';
 import * as THREE from 'three';
 import { Water } from 'three/examples/jsm/objects/Water.js';
 import Terrain from '../World/Terrain';
@@ -16,7 +18,7 @@ import StreetLamp from '../World/StreetLamp';
 import GroundLight from '../World/GroundLight';
 import LevelBoundaries from '../Systems/LevelBoundaries';
 import ZoneController from '../Systems/ZoneController';
-import InteractionSystem from '../Systems/InteractionSystem'; // Import here
+import InteractionSystem from '../Systems/InteractionSystem';
 import { useGameStore } from '@/store/gameStore';
 import { createWaterNormalMap } from '../Systems/Utilities';
 
@@ -133,20 +135,42 @@ export default function Scene() {
     const robotRef = useRef<THREE.Group>(null);
 
     return (
-        <div style={{ width: '100vw', height: '100vh' }}>
-            <Canvas shadows dpr={[1, 1.5]} performance={{ min: 0.5 }} camera={{ position: [0, 10, -20], fov: 60 }} gl={{ toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 0.5 }}>
+        <div style={{ width: '100vw', height: '100vh', background: '#050505' }}>
+            <Canvas
+                shadows
+                dpr={[1, 1.5]}
+                performance={{ min: 0.5 }}
+                camera={{ position: [0, 10, -20], fov: 60 }}
+                gl={{
+                    toneMapping: THREE.NoToneMapping,
+                    antialias: false
+                }}
+            >
                 <AdaptiveDpr pixelated />
                 <AdaptiveEvents />
-                <fog attach="fog" args={[0xd6eaf8, 0.0015]} />
-                <TimeSystem />
-                <WaterComponent />
 
+                {/* --- LIGHTING & ENVIRONMENT --- */}
+                <Environment preset="city" environmentIntensity={0.5} />
+                {/* ContactShadows removed for performance optimization */}
+                <TimeSystem />
+
+                {/* --- WORLD --- */}
+                <WaterComponent />
                 <Terrain />
                 <Bridge />
                 <SocialWorkHub />
+                <LevelBoundaries />
+                <ZoneController robotRef={robotRef} />
 
-                {/* Street Lamps */}
-                {/* Street Lamps (8 Total - 4 Outer, 4 Inner) */}
+                {/* --- POST PROCESSING --- */}
+                <EffectComposer enableNormalPass={false}>
+                    {/* Subtle Bloom - Gone is the nuclear glow */}
+                    <Bloom luminanceThreshold={1} mipmapBlur intensity={0.2} radius={0.5} />
+                    <Vignette eskil={false} offset={0.1} darkness={0.6} />
+                    <ToneMapping mode={THREE.ACESFilmicToneMapping} />
+                </EffectComposer>
+
+                {/* --- ENTITIES --- */}
                 {/* Outer Corners */}
                 <StreetLamp position={[120, 2, -495]} />
                 <StreetLamp position={[-120, 2, -495]} />
@@ -159,21 +183,18 @@ export default function Scene() {
                 <StreetLamp position={[50, 2, -325]} />
                 <StreetLamp position={[-50, 2, -325]} />
 
-                {/* Ground Lights (Social Hub Corners) */}
+                {/* Ground Lights */}
                 <GroundLight position={[-115, 2.05, -490]} />
                 <GroundLight position={[115, 2.05, -490]} />
                 <GroundLight position={[-115, 2.05, -260]} />
                 <GroundLight position={[115, 2.05, -260]} />
-
-                {/* Spawn Area Ground Light */}
                 <GroundLight position={[-5, 0.05, -40]} />
 
                 <Robot groupRef={robotRef} />
-                <AIRobot playerRef={robotRef} initialPosition={[10, 5, -330]} />
-                <AIRobot playerRef={robotRef} initialPosition={[15, 5, -330]} />
+                <AIRobot playerRef={robotRef} initialPosition={[10, 5, -330]} isLLMEnabled={true} />
+                <AIRobot playerRef={robotRef} initialPosition={[15, 5, -330]} isLLMEnabled={false} />
                 <YukaSystem />
-                <LevelBoundaries />
-                <ZoneController robotRef={robotRef} />
+
                 <InteractionSystem />
                 <CameraRig target={robotRef as React.RefObject<THREE.Group | null>} />
 

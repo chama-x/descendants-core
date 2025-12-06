@@ -8,7 +8,7 @@ import { useGameStore } from '@/store/gameStore';
 export default function InteractionSystem() {
     const { camera, scene } = useThree();
     const raycaster = useRef(new THREE.Raycaster());
-    const center = useRef(new THREE.Vector2(0, 0));
+    const center = useRef(new THREE.Vector2(0, 0.2));
 
     // Store Actions
     const setHoveredAgentId = useGameStore(state => state.setHoveredAgentId);

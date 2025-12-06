@@ -12,7 +12,8 @@ import { Joints } from './useRobotController';
 export function useYukaAI(
     groupRef: React.RefObject<THREE.Group | null>,
     playerRef: React.RefObject<THREE.Group | null>,
-    joints: React.MutableRefObject<Joints>
+    joints: React.MutableRefObject<Joints>,
+    isLLMEnabled: boolean = false
 ) {
     const vehicleRef = useRef<YUKA.Vehicle | null>(null);
     const aiManager = AIManager.getInstance();
@@ -38,7 +39,7 @@ export function useYukaAI(
     const toSafetyRef = useRef(new THREE.Vector3());
 
     // AI Brain
-    const brainRef = useRef(new ClientBrain());
+    const brainRef = useRef(new ClientBrain('agent-' + Math.random().toString(36).substr(2, 5), isLLMEnabled));
 
     useEffect(() => {
         if (!groupRef.current) return;

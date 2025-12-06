@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { useGameStore } from '@/store/gameStore';
 import { createMaterials } from '../Systems/Materials';
 
-import { Text } from '@react-three/drei';
+import { Text, MeshReflectorMaterial } from '@react-three/drei';
 
 export default function SocialWorkHub() {
     const addCollidableMesh = useGameStore((state) => state.addCollidableMesh);
@@ -176,7 +176,29 @@ export default function SocialWorkHub() {
         return { pergolaMatrices: pergolas, sofaMatrices: sofas, sofaBackMatrices: sofaBacks, sofaArmMatrices: sofaArms, tableMatrices: tables, obstacles: obs, interactables: ints };
     }, [hubCenter]);
 
-    // ... (Keep Instances LayoutEffects)
+    // Apply Instances LayoutEffects
+    React.useLayoutEffect(() => {
+        if (pergolaRef.current) {
+            pergolaMatrices.forEach((mat, i) => pergolaRef.current!.setMatrixAt(i, mat));
+            pergolaRef.current.instanceMatrix.needsUpdate = true;
+        }
+        if (sofaRef.current) {
+            sofaMatrices.forEach((mat, i) => sofaRef.current!.setMatrixAt(i, mat));
+            sofaRef.current.instanceMatrix.needsUpdate = true;
+        }
+        if (sofaBackRef.current) {
+            sofaBackMatrices.forEach((mat, i) => sofaBackRef.current!.setMatrixAt(i, mat));
+            sofaBackRef.current.instanceMatrix.needsUpdate = true;
+        }
+        if (sofaArmRef.current) {
+            sofaArmMatrices.forEach((mat, i) => sofaArmRef.current!.setMatrixAt(i, mat));
+            sofaArmRef.current.instanceMatrix.needsUpdate = true;
+        }
+        if (tableRef.current) {
+            tableMatrices.forEach((mat, i) => tableRef.current!.setMatrixAt(i, mat));
+            tableRef.current.instanceMatrix.needsUpdate = true;
+        }
+    }, [pergolaMatrices, sofaMatrices, sofaBackMatrices, sofaArmMatrices, tableMatrices]);
 
     // Register Ground & Obstacles & Interactables
     useEffect(() => {
@@ -197,16 +219,28 @@ export default function SocialWorkHub() {
 
     return (
         <group>
-            {/* Floor - Wood Decking instead of Concrete */}
+            {/* Floor - Premium Polished Wood/Concrete with Real-time Reflections */}
             <mesh ref={groundRef} position={[hubCenter.x, hubCenter.y - 1, hubCenter.z]} receiveShadow>
                 <boxGeometry args={[hubSize, 2, hubSize]} />
-                <primitive object={materials.wood} attach="material" />
+                <MeshReflectorMaterial
+                    blur={[300, 100]}
+                    resolution={1024}
+                    mixBlur={1}
+                    mixStrength={40}
+                    roughness={1}
+                    depthScale={1.2}
+                    minDepthThreshold={0.4}
+                    maxDepthThreshold={1.4}
+                    color="#151515"
+                    metalness={0.5}
+                    mirror={0.5}
+                />
             </mesh>
 
             {/* Pergola Structure */}
             <instancedMesh ref={pergolaRef} args={[undefined, undefined, pergolaMatrices.length]} castShadow receiveShadow>
                 <boxGeometry args={[1, 1, 1]} />
-                <primitive object={materials.wood} attach="material" />
+                <meshStandardMaterial color="#8B4513" roughness={0.9} />
             </instancedMesh>
 
             {/* Sofas (Seats) - Warm Leather */}
@@ -230,7 +264,7 @@ export default function SocialWorkHub() {
             {/* Tables */}
             <instancedMesh ref={tableRef} args={[undefined, undefined, tableMatrices.length]} castShadow receiveShadow>
                 <boxGeometry args={[1, 1, 1]} />
-                <primitive object={materials.wood} attach="material" />
+                <meshStandardMaterial color="#5c4033" roughness={0.5} />
             </instancedMesh>
 
             {/* Concrete Wall Backing */}

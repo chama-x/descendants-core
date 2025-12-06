@@ -13,17 +13,17 @@ export default function ZoneController({ robotRef }: { robotRef: React.RefObject
     const cityStartZ = -250; // Where the transition starts (on the bridge)
     const cityFullZ = -350;  // Where the transition is complete (in the city)
 
-    // Island Atmosphere (Sunny)
-    const islandFogColor = new THREE.Color(0xd6eaf8);
-    const islandFogDensity = 0.0015;
-    const islandAmbientColor = new THREE.Color(0xccddff);
-    const islandAmbientIntensity = 0.4;
+    // Island Atmosphere (Dystopian Coast)
+    const islandFogColor = new THREE.Color(0x050505);
+    const islandFogDensity = 0.02;
+    const islandAmbientColor = new THREE.Color(0x111111);
+    const islandAmbientIntensity = 0.2;
 
-    // City/Park Atmosphere (Sunny Tech Park)
-    const cityFogColor = new THREE.Color(0xe6f7ff); // Light blueish white
-    const cityFogDensity = 0.005; // Less dense
-    const cityAmbientColor = new THREE.Color(0xffffee); // Warm white
-    const cityAmbientIntensity = 0.8; // Brighter
+    // City/Park Atmosphere (Cyberpunk Core)
+    const cityFogColor = new THREE.Color(0x000510); // Deep dark blue
+    const cityFogDensity = 0.015;
+    const cityAmbientColor = new THREE.Color(0x001133); // Cool night
+    const cityAmbientIntensity = 0.5;
 
     useFrame(() => {
         if (!robotRef.current) return;

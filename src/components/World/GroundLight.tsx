@@ -15,26 +15,28 @@ export default function GroundLight({ position }: { position: [number, number, n
             {/* Glass Cover */}
             <mesh rotation={[-Math.PI / 2, 0, 0]}>
                 <circleGeometry args={[1.2, 32]} />
-                <meshBasicMaterial color={isNight ? "#ccddff" : "#445566"} toneMapped={false} />
-            </mesh>
-
-            {/* Fake Light Pool (Optimization: Replaces expensive PointLight) */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]} visible={isNight}>
-                <circleGeometry args={[10, 32]} />
-                <meshBasicMaterial
-                    color="#ccddff"
-                    transparent
-                    opacity={0.4}
-                    blending={THREE.AdditiveBlending}
-                    depthWrite={false}
+                <meshStandardMaterial
+                    color={isNight ? "#ccddff" : "#445566"}
+                    emissive={isNight ? "#ccddff" : "#000"}
+                    emissiveIntensity={isNight ? 1 : 0}
+                    toneMapped={false}
                 />
             </mesh>
 
-            {/* Glow Volume */}
-            <mesh position={[0, 0.2, 0]} rotation={[-Math.PI / 2, 0, 0]} visible={isNight}>
-                <circleGeometry args={[6, 32]} />
-                <meshBasicMaterial color="#ccddff" transparent opacity={0.1} depthWrite={false} />
-            </mesh>
+            {/* Real Light Source REPLACED by Glow Disc for FPS */}
+            {isNight && (
+                <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
+                    <circleGeometry args={[4.0, 32]} />
+                    <meshBasicMaterial
+                        color="#ccddff"
+                        transparent
+                        opacity={0.3}
+                        blending={THREE.AdditiveBlending}
+                        depthWrite={false}
+                        toneMapped={false}
+                    />
+                </mesh>
+            )}
         </group>
     );
 }
