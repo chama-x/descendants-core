@@ -191,8 +191,8 @@ export default function Scene() {
                 <GroundLight position={[-5, 0.05, -40]} />
 
                 <Robot groupRef={robotRef} />
-                <AIRobot playerRef={robotRef} initialPosition={[10, 5, -330]} isLLMEnabled={true} />
-                <AIRobot playerRef={robotRef} initialPosition={[15, 5, -330]} isLLMEnabled={false} />
+                <AIRobot playerRef={robotRef} initialPosition={[10, 5, -330]} />
+                <AIRobot playerRef={robotRef} initialPosition={[15, 5, -330]} />
                 <YukaSystem />
 
                 <InteractionSystem />

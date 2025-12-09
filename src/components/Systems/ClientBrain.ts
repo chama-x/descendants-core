@@ -8,9 +8,7 @@ export interface BrainState {
     // Chat State
     isPausedForChat: boolean;
     chatHistory: { role: 'user' | 'agent', text: string }[];
-
     memo: string | null;
-    mode: 'LLM' | 'LOCAL';
 }
 
 import { RateLimiter } from '@/lib/rateLimiter';
@@ -36,17 +34,16 @@ export class ClientBrain {
         return this.registry.get(id);
     }
 
-    constructor(id: string = 'agent-01', isLLMEnabled: boolean = false) {
+    constructor(id: string = 'agent-01') {
         this.id = id;
         ClientBrain.registry.set(id, this); // Register self
         this.state = {
-            thought: isLLMEnabled ? "Initializing neural pathways..." : "Running heuristic core...",
+            thought: "Initializing neural pathways...",
             isThinking: false,
             lastThoughtTime: 0,
             isPausedForChat: false,
             chatHistory: [],
-            memo: null,
-            mode: isLLMEnabled ? 'LLM' : 'LOCAL'
+            memo: null
         };
         // 15 requests per 60 seconds (Limit for Gemini Flash Free Tier)
         this.rateLimiter = new RateLimiter(15, 60);
@@ -98,26 +95,7 @@ export class ClientBrain {
         }
 
         // Rate Limiting Check
-        if (this.state.isThinking) return null;
-
-        // LOCAL MODE: Instant Heuristic Decision (0 Tokens)
-        if (this.state.mode === 'LOCAL') {
-            // Simple State Machine
-            // 10% Chance to switch behavior every update (approx 1 sec)
-            if (Math.random() < 0.1) {
-                if (currentBehavior === 'IDLE' || currentBehavior === 'WAIT') {
-                    // Start Wandering
-                    return { action: 'WANDER', thought: "[LOCAL] Wandering..." };
-                } else {
-                    // Stop
-                    return { action: 'WAIT', thought: "[LOCAL] Resting..." };
-                }
-            }
-            return null; // Keep doing what you are doing
-        }
-
-        // LLM MODE: Check Rate Limiter
-        if (!this.rateLimiter.tryConsume()) {
+        if (this.state.isThinking || !this.rateLimiter.tryConsume()) {
             return null;
         }
 

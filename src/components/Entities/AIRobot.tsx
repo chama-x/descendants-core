@@ -10,8 +10,7 @@ export default function AIRobot({
     initialPosition = [10, 5, -330]
 }: {
     playerRef: React.RefObject<THREE.Group | null>,
-    initialPosition?: [number, number, number],
-    isLLMEnabled?: boolean
+    initialPosition?: [number, number, number]
 }) {
     const groupRef = useRef<THREE.Group>(null);
     // We need to access joints for animation. 
@@ -19,7 +18,7 @@ export default function AIRobot({
     // For now, let's keep the visual structure but we need to re-bind joints.
     const joints = useRef<Joints>({});
     // Use the new Yuka-powered brain with animation support
-    const { vehicle } = useYukaAI(groupRef, playerRef, joints, isLLMEnabled);
+    const { vehicle } = useYukaAI(groupRef, playerRef, joints);
 
     // ... (Rest of the component needs to be updated to handle animation if useYukaAI doesn't return joints)
     // Wait, useYukaAI currently returns { vehicle }. It doesn't handle animation yet.

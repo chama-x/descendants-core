@@ -16,16 +16,6 @@ export interface AgentContext {
 }
 
 export async function processAgentThought(context: AgentContext): Promise<string> {
-    // Feature Flag: Disable AI for development to save tokens
-    if (process.env.ENABLE_GEMINI_API !== 'true') {
-        // Mock Decision
-        return JSON.stringify({
-            action: "WAIT",
-            thought: "Brain dormant (ENABLE_GEMINI_API=false)",
-            memo: context.memo
-        });
-    }
-
     const client = getGeminiClient();
 
     // Context Compression: Convert entities to Markdown Table

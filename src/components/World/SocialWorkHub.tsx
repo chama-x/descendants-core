@@ -3,7 +3,30 @@ import * as THREE from 'three';
 import { useGameStore } from '@/store/gameStore';
 import { createMaterials } from '../Systems/Materials';
 
-import { Text, MeshReflectorMaterial } from '@react-three/drei';
+import { Text, useTexture } from '@react-three/drei';
+
+function CarpetMaterial() {
+    const carpetTexture = useTexture('/textures/luxury_carpet_diffuse.png');
+
+    useMemo(() => {
+        carpetTexture.wrapS = carpetTexture.wrapT = THREE.RepeatWrapping;
+        carpetTexture.repeat.set(12, 12); // Tiling for high detail
+        // carpetTexture.anisotropy = 16;
+    }, [carpetTexture]);
+
+    return (
+        <meshPhysicalMaterial
+            map={carpetTexture}
+            color="#2a2a2a"          // Deep dark grey base
+            roughness={1.0}          // Fully matte for fabric
+            metalness={0.0}
+            sheen={1.0}              // Simulates velvet/fur sheen
+            sheenColor={new THREE.Color('#999999')} // Light grey sheen for squishy look
+            sheenRoughness={0.5}
+            normalScale={new THREE.Vector2(0.5, 0.5)} // Soft normals if we had a normal map, but map handles some detail
+        />
+    );
+}
 
 export default function SocialWorkHub() {
     const addCollidableMesh = useGameStore((state) => state.addCollidableMesh);
@@ -219,22 +242,10 @@ export default function SocialWorkHub() {
 
     return (
         <group>
-            {/* Floor - Premium Polished Wood/Concrete with Real-time Reflections */}
+            {/* Floor - Premium Plush Carpet */}
             <mesh ref={groundRef} position={[hubCenter.x, hubCenter.y - 1, hubCenter.z]} receiveShadow>
                 <boxGeometry args={[hubSize, 2, hubSize]} />
-                <MeshReflectorMaterial
-                    blur={[300, 100]}
-                    resolution={1024}
-                    mixBlur={1}
-                    mixStrength={40}
-                    roughness={1}
-                    depthScale={1.2}
-                    minDepthThreshold={0.4}
-                    maxDepthThreshold={1.4}
-                    color="#151515"
-                    metalness={0.5}
-                    mirror={0.5}
-                />
+                <CarpetMaterial />
             </mesh>
 
             {/* Pergola Structure */}
