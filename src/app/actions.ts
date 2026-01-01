@@ -9,7 +9,7 @@ export async function generateAgentThought(context: AgentContext) {
         const responseText = await processAgentThought(context);
         return responseText;
     } catch (error) {
-        console.error("Gemini API Error:", error);
+        console.error("Groq API Error:", error);
         // Fallback response inside the Server Action boundary
         return JSON.stringify({ action: "WAIT", thought: "My brain hurts (API Error)." });
     }

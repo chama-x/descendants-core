@@ -1,41 +1,185 @@
 /* eslint-disable react-hooks/immutability */
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, useState, useEffect } from 'react';
 import * as THREE from 'three';
+import { Html } from '@react-three/drei';
 import { useYukaAI } from './useYukaAI';
 import { createMaterials } from '../Systems/Materials';
 import { Joints } from './useRobotController';
+import { getActiveModel } from '@/lib/groq';
 
 export default function AIRobot({
     playerRef,
-    initialPosition = [10, 5, -330]
+    initialPosition = [10, 5, -330],
+    agentId = 'agent-01'
 }: {
     playerRef: React.RefObject<THREE.Group | null>,
-    initialPosition?: [number, number, number]
+    initialPosition?: [number, number, number],
+    agentId?: string
 }) {
     const groupRef = useRef<THREE.Group>(null);
-    // We need to access joints for animation. 
-    // Ideally useYukaAI should return joints or we separate animation logic.
-    // For now, let's keep the visual structure but we need to re-bind joints.
-    const joints = useRef<Joints>({});
-    // Use the new Yuka-powered brain with animation support
-    const { vehicle } = useYukaAI(groupRef, playerRef, joints);
+    const joints = useRef<any>({});
+    const { vehicle, brain } = useYukaAI(groupRef, playerRef, joints, agentId);
 
-    // ... (Rest of the component needs to be updated to handle animation if useYukaAI doesn't return joints)
-    // Wait, useYukaAI currently returns { vehicle }. It doesn't handle animation yet.
-    // We should probably port the animation logic to useYukaAI or a separate useRobotAnimation hook.
-    // For this step, let's just swap the controller and see if it moves.
-    // We will lose animations temporarily (he will slide), which is expected for Phase 1.
+    // HUD State (for reactive updates)
+    const [hudState, setHudState] = useState({
+        thought: 'Initializing...',
+        isThinking: false,
+        model: 'Loading...'
+    });
 
+    const [distanceToPlayer, setDistanceToPlayer] = useState(100);
+
+    // Sync brain state to HUD every 500ms
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (brain) {
+                setHudState({
+                    thought: brain.state.thought,
+                    isThinking: brain.state.isThinking,
+                    model: getActiveModel().split('/').pop() || 'Unknown'
+                });
+            }
+        }, 500);
+        return () => clearInterval(interval);
+    }, [brain]);
+
+    // Check Distance (Throttled via simple frame skip or just ref updating)
+    // Actually, setting state in useFrame is bad.
+    // Better: Update a ref, and use CSS opacity based on that?
+    // No, React re-render needed for conditionals.
+    // Let's use a throttled interval for distance check to save perf.
+    useEffect(() => {
+        const distInterval = setInterval(() => {
+            if (groupRef.current && playerRef.current) {
+                const d = groupRef.current.position.distanceTo(playerRef.current.position);
+                setDistanceToPlayer(d);
+            }
+        }, 200);
+        return () => clearInterval(distInterval);
+    }, [playerRef]);
+
+    const showDetails = distanceToPlayer < 15; // Show thoughts when < 15m
 
     const { bodyMat, jointMat, glowMat } = useMemo(() => {
         const mats = createMaterials();
-        // Override glow to RED for AI
         const redGlow = new THREE.MeshBasicMaterial({ color: 0xff0000, toneMapped: false });
         return { bodyMat: mats.robotBody, jointMat: mats.robotJoint, glowMat: redGlow };
     }, []);
 
     return (
         <group ref={groupRef} position={initialPosition}>
+            {/* Floating HUD above head */}
+            <Html
+                position={[0, 8, 0]}
+                center
+                distanceFactor={12} // Scaled up (was 15)
+                occlude
+                style={{
+                    pointerEvents: 'none',
+                    userSelect: 'none',
+                }}
+            >
+                {/* Main HUD Container - Scaled Up */}
+                <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '4px',
+                }}>
+                    {/* 1. Name Badge (Always Visible, larger) */}
+                    <div style={{
+                        background: 'rgba(0, 0, 0, 0.6)',
+                        backdropFilter: 'blur(4px)',
+                        color: '#fff',
+                        padding: '6px 12px',
+                        borderRadius: '20px',
+                        fontFamily: 'sans-serif',
+                        fontSize: '16px', // Larger
+                        fontWeight: 'bold',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                        whiteSpace: 'nowrap',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                    }}>
+                        <span>{agentId}</span>
+                        <span style={{
+                            background: '#0070f3',
+                            color: 'white',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontSize: '10px',
+                            textTransform: 'uppercase'
+                        }}>AI</span>
+                    </div>
+
+                    {/* 2. Thought Bubble (Proximity Only) */}
+                    <div style={{
+                        opacity: showDetails ? 1 : 0,
+                        transform: showDetails ? 'translateY(0)' : 'translateY(10px)',
+                        transition: 'all 0.3s ease',
+                        pointerEvents: showDetails ? 'auto' : 'none',
+
+                        background: 'rgba(10, 10, 10, 0.9)',
+                        color: '#eee',
+                        padding: '12px',
+                        borderRadius: '12px',
+                        border: hudState.isThinking ? '2px solid #00ff88' : '1px solid #444',
+                        boxShadow: hudState.isThinking ? '0 0 15px rgba(0, 255, 136, 0.3)' : '0 4px 12px rgba(0,0,0,0.5)',
+                        width: '280px',
+                        marginTop: '8px',
+                        position: 'relative'
+                    }}>
+                        {/* Triangle Pointer */}
+                        <div style={{
+                            position: 'absolute',
+                            top: '-6px',
+                            left: '50%',
+                            transform: 'translateX(-50%) rotate(45deg)',
+                            width: '12px',
+                            height: '12px',
+                            background: hudState.isThinking ? '#00ff88' : '#444',
+                            borderLeft: '1px solid transparent',
+                            borderTop: '1px solid transparent',
+                            zIndex: -1
+                        }} />
+
+                        {/* Status Header */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            marginBottom: '8px',
+                            fontSize: '11px',
+                            color: '#888',
+                            borderBottom: '1px solid #333',
+                            paddingBottom: '4px'
+                        }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{
+                                    width: '8px', height: '8px', borderRadius: '50%',
+                                    background: hudState.isThinking ? '#00ff88' : '#555',
+                                    boxShadow: hudState.isThinking ? '0 0 5px #00ff88' : 'none',
+                                    transition: 'background 0.3s'
+                                }} />
+                                {hudState.isThinking ? 'PROCESSING...' : 'IDLE'}
+                            </span>
+                            <span style={{ color: '#00d4ff' }}>{hudState.model}</span>
+                        </div>
+
+                        {/* Thought Text */}
+                        <div style={{
+                            fontSize: '13px',
+                            lineHeight: '1.5',
+                            color: '#fff',
+                            fontWeight: 400
+                        }}>
+                            "{hudState.thought}"
+                        </div>
+                    </div>
+                </div>
+            </Html>
+
             <group ref={(el) => { if (el && joints.current) joints.current.hips = el; }} position={[0, 3.5, 0]}>
                 <mesh material={bodyMat} castShadow receiveShadow>
                     <boxGeometry args={[1.5, 0.5, 1]} />

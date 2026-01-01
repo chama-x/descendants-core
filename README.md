@@ -1,36 +1,136 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Descendants (Core)
 
-## Getting Started
+> **A Next-Generation Agentic AI Simulation Platform**  
+> *Powered by Cortana Research & Development Center*
 
-First, run the development server:
+![Cortana Descendants Large](https://github.com/user-attachments/assets/ccf630db-ff2b-4ad2-9f2d-5cf5262c6eff)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 📖 Overview
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+**Descendants** is an advanced 3D simulation platform designed to bridge the gap between human intelligence and artificial agents. Built on a "Modular Monolith" architecture, it combines high-fidelity 3D rendering with autonomous agent logic, enabling complex interactions in a persistent virtual world.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+This project represents the foundation of **CortanaOS**—a future operating system for spatial computing and agentic collaboration.
 
-## Learn More
 
-To learn more about Next.js, take a look at the following resources:
+https://github.com/user-attachments/assets/a619eb77-a34e-43e9-a3e2-fb284629706d
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Deploy on Vercel
+https://github.com/user-attachments/assets/bca866cb-1f78-441b-82df-b9ead7e1ffa1
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🚀 Vision & Future
+
+Our roadmap is driven by the convergence of Spatial Intelligence and Generative AI.
+
+### 🧠 6-Layer Design Architecture
+1.  **Application Layer**: User interfaces, Next-gen UI/UX.
+2.  **Communication Layer**: Multi-Protocol Support (MCP), A2A (Agent-to-Agent) messaging.
+3.  **Intelligence Layer**: Agentic AI, Large Model integration (500+ models), Adaptive Context.
+4.  **Spatial Layer**: World Engine, Custom 3D Pipeline, Physics & Environment.
+5.  **Encryption Layer**: Secure data handling for "Dual User" (Human & Simulant) privacy.
+6.  **Hardware Abstraction Layer**: Cross-platform compatibility (Web, VR/AR).
+
+### 🌟 Key Pillars
+*   **RealityLink**: Seamless bridging of virtual and physical contexts.
+*   **Simulated Vision**: Agents possess depth perception, temporal context, and simulated "senses".
+*   **Time-Travel**: Advanced state management allowing temporal navigation of simulation states.
+*   **Agentic Collaboration**: Simulants (AI) and Humans working together in shared spaces.
+
+---
+
+## 🏗️ Current Architecture
+
+The current codebase establishes the **Core/Spatial** and **Intelligence** layers:
+
+### 🎮 World Engine (Spatial Layer)
+*   **Rendering**: `React Three Fiber` (R3F) & `Three.js` for high-performance WebGL graphics.
+*   **Physics & Environment**:
+    *   Dynamic **Time System** (Day/Night cycles) with accurate Sun/Moon positioning.
+    *   Procedural Terrain generation using FBM noise & Instanced foliage.
+    *   **Atmospheric Zone Controller** for smooth Fog/Lighting transitions between biomes.
+    *   Collision detection with Raycasting and Height-field physics.
+
+### 🤖 AI System (Intelligence Layer)
+*   **Brain**: Integrated with **Google Gemini 2.5 Flash** for high-level decision making.
+    *   *Perception*: Agents "see" nearby entities (Players, Agents, Obstacles) and their status.
+    *   *Reasoning*: Agents autonomously decide to Follow, Wander, Chat, or Wait based on visual context.
+*   **Motor Control**: Powered by **Yuka AI** for autonomous steering behaviors.
+    *   `Seek`, `Wander`, `Separation`, `ObstacleAvoidance`.
+    *   Smooth navigation and separation logic for crowd dynamics.
+*   **Social**:
+    *   Agent-to-Agent interactions (Greeting, Chatting states).
+    *   Agent-to-Player interactions (Look-at, Waving, Following).
+
+### 🛠 Tech Stack
+*   **Framework**: Next.js 16 (React 19)
+*   **Language**: TypeScript
+*   **State Management**: Zustand
+*   **AI/ML**: Google GenAI SDK (Gemini), Yuka GameAI
+*   **3D**: React Three Fiber, Drei
+
+---
+
+## 💻 Getting Started
+
+### Prerequisites
+*   Node.js 18+
+*   pnpm (recommended) or npm
+*   Google Gemini API Key
+
+### Installation
+
+1.  **Clone the repository**
+    ```bash
+    git clone https://github.com/Cortana-Devs/Descendants.git
+    cd Descendants
+    ```
+
+2.  **Install dependencies**
+    ```bash
+    pnpm install
+    ```
+
+3.  **Environment Setup**
+    Create a `.env.local` file in the root directory:
+    ```env
+    NEXT_PUBLIC_GEMINI_API_KEY=your_api_key_here
+    ```
+
+4.  **Run Development Server**
+    ```bash
+    pnpm dev
+    ```
+    Open [http://localhost:3000](http://localhost:3000) to enter the simulation.
+
+---
+
+## 🗺️ Roadmap
+
+| Phase | Status | Feature |
+|-------|:------:|---------|
+| **Phase 1: Foundation** | ✅ | Core 3D Engine, Procedural Terrain, Day/Night Cycle |
+| **Phase 2: Intelligence** | ✅ | Gemini 2.5 Integration, Yuka Steering, Basic Agent Behaviors |
+| **Phase 3: Social** | 🚧 | Multi-Agent Chat, Group Dynamics, "Simulacra" Personality Engine |
+| **Phase 4: Expansion** | ⏳ | Infinite Terrain, MCP Integration, RealityLink Prototype |
+| **Phase 5: CortanaOS** | 🔮 | Full Operating System Logic, Async Priority Queues, Deep Memory |
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions from industry experts and engineers.
+1.  Fork the repository.
+2.  Create your feature branch (`git checkout -b feature/amazing-feature`).
+3.  Commit your changes (`git commit -m 'Add some amazing feature'`).
+4.  Push to the branch (`git push origin feature/amazing-feature`).
+5.  Open a Pull Request.
+
+## 📄 License
+
+Distributed under the MIT License. See `LICENSE` for more information.
+
+---
+
+*Designed and engineered by the Cortana Research & Development Center.*

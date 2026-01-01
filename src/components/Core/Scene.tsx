@@ -10,6 +10,7 @@ import { Water } from 'three/examples/jsm/objects/Water.js';
 import Terrain from '../World/Terrain';
 import Bridge from '../World/Bridge';
 import SocialWorkHub from '../World/SocialWorkHub';
+import OfficeHub from '../World/OfficeHub';
 import Robot from '../Entities/Robot';
 import AIRobot from '../Entities/AIRobot';
 import YukaSystem from '../Systems/YukaSystem';
@@ -18,7 +19,7 @@ import StreetLamp from '../World/StreetLamp';
 import GroundLight from '../World/GroundLight';
 import LevelBoundaries from '../Systems/LevelBoundaries';
 import ZoneController from '../Systems/ZoneController';
-import InteractionSystem from '../Systems/InteractionSystem';
+import Portal from '../World/Portal';
 import { useGameStore } from '@/store/gameStore';
 import { createWaterNormalMap } from '../Systems/Utilities';
 
@@ -67,13 +68,24 @@ function CameraRig({ target }: { target: React.RefObject<THREE.Group | null> }) 
     const setCameraLocked = useGameStore((state) => state.setCameraLocked);
     const setDebugText = useGameStore((state) => state.setDebugText);
 
+    const invertedMouse = useGameStore((state) => state.invertedMouse);
+    const sensitivity = useGameStore((state) => state.sensitivity);
+
     const cameraState = useRef({ yaw: 0, pitch: 0 });
 
     useEffect(() => {
         const onMouseMove = (event: MouseEvent) => {
             if (!document.pointerLockElement) return;
-            cameraState.current.yaw -= event.movementX * 0.002;
-            cameraState.current.pitch -= event.movementY * 0.002;
+            
+            // Apply sensitivity (base multiplier 0.002)
+            const multiplier = 0.002 * sensitivity;
+            
+            cameraState.current.yaw -= event.movementX * multiplier;
+            
+            // Apply inverted mouse
+            const pitchDelta = event.movementY * multiplier;
+            cameraState.current.pitch -= invertedMouse ? -pitchDelta : pitchDelta;
+            
             const limit = Math.PI / 2 - 0.1;
             cameraState.current.pitch = Math.max(-limit, Math.min(limit, cameraState.current.pitch));
         };
@@ -107,7 +119,7 @@ function CameraRig({ target }: { target: React.RefObject<THREE.Group | null> }) 
             document.removeEventListener('pointerlockchange', onPointerLockChange);
             gl.domElement.removeEventListener('click', onClick);
         };
-    }, [gl, setCameraLocked, setDebugText]);
+    }, [gl, setCameraLocked, setDebugText, invertedMouse, sensitivity]);
 
     useFrame(() => {
         if (!target.current) return;
@@ -135,18 +147,9 @@ export default function Scene() {
     const robotRef = useRef<THREE.Group>(null);
 
     return (
-        <div style={{ width: '100vw', height: '100vh', background: '#050505' }}>
-            <Canvas
-                shadows
-                dpr={[1, 1.5]}
-                performance={{ min: 0.5 }}
-                camera={{ position: [0, 10, -20], fov: 60 }}
-                gl={{
-                    toneMapping: THREE.NoToneMapping,
-                    antialias: false
-                }}
-            >
-                <AdaptiveDpr pixelated />
+        <div style={{ width: '100vw', height: '100vh' }}>
+            <Canvas shadows dpr={[1, 1.5]} performance={{ min: 0.5 }} camera={{ position: [0, 10, -20], fov: 60 }} gl={{ toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 0.8 }}>
+                {/* <AdaptiveDpr pixelated /> */}
                 <AdaptiveEvents />
 
                 {/* --- LIGHTING & ENVIRONMENT --- */}
@@ -157,10 +160,19 @@ export default function Scene() {
                 {/* --- WORLD --- */}
                 <WaterComponent />
                 <Terrain />
-                <Bridge />
+
+                {/* --- Bridges (Triangle Network) --- */}
+                {/* 1. Main: Island -> Social Hub */}
+                <Bridge start={[0, 5, -120]} end={[0, 4, -300]} />
+
+                {/* 2. Island -> Office Hub (East) */}
+                <Bridge start={[20, 5, -120]} end={[350, 4, -200]} />
+
+                {/* 3. Social Hub -> Office Hub */}
+                <Bridge start={[50, 4, -350]} end={[350, 4, -300]} />
+
                 <SocialWorkHub />
-                <LevelBoundaries />
-                <ZoneController robotRef={robotRef} />
+                <OfficeHub />
 
                 {/* --- POST PROCESSING --- */}
                 <EffectComposer enableNormalPass={false}>
@@ -189,6 +201,38 @@ export default function Scene() {
                 <GroundLight position={[-115, 2.05, -260]} />
                 <GroundLight position={[115, 2.05, -260]} />
                 <GroundLight position={[-5, 0.05, -40]} />
+
+                {/* Portal - Beach Area (Near Spawn) */}
+                <Portal
+                    position={[-20, 2, -50]}
+                    rotation={[0, 0.5, 0]}
+                    playerRef={robotRef}
+                    onTeleport={() => {
+                        // Teleport Logic
+                        if (robotRef.current) {
+                            // 1. Trigger Fade Out
+                            useGameStore.getState().setTeleporting(true);
+
+                            // 2. Wait for Fade (500ms)
+                            setTimeout(() => {
+                                if (robotRef.current) {
+                                    // 3. Move Robot (Entrance of OFFICE Hub)
+                                    // New Office X = 350. Entrance near Z=-200 or -250?
+                                    // Let's target the entrance side near Bridge 2.
+                                    robotRef.current.position.set(350, 5, -220);
+
+                                    // 4. Force Rotation (Face South/Inward)
+                                    robotRef.current.rotation.set(0, Math.PI, 0);
+
+                                    // 5. Trigger Fade In after short delay
+                                    setTimeout(() => {
+                                        useGameStore.getState().setTeleporting(false);
+                                    }, 500);
+                                }
+                            }, 500);
+                        }
+                    }}
+                />
 
                 <Robot groupRef={robotRef} />
                 <AIRobot playerRef={robotRef} initialPosition={[10, 5, -330]} />

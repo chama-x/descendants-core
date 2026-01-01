@@ -3,15 +3,20 @@ import * as THREE from 'three';
 import { useGameStore } from '@/store/gameStore';
 import { createMaterials } from '../Systems/Materials';
 
-export default function Bridge() {
+interface BridgeProps {
+    start?: [number, number, number];
+    end?: [number, number, number];
+}
+
+export default function Bridge({ start = [0, 5, -120], end = [0, 4, -300] }: BridgeProps) {
     const addCollidableMesh = useGameStore((state) => state.addCollidableMesh);
     const removeCollidableMesh = useGameStore((state) => state.removeCollidableMesh);
     const colliderRef = useRef<THREE.Mesh>(null);
 
     // Bridge Configuration
-    const startPos = useMemo(() => new THREE.Vector3(0, 5, -120), []); // Edge of island
-    const endPos = useMemo(() => new THREE.Vector3(0, 2, -300), []);   // Start of hub, slightly elevated
-    const length = useMemo(() => startPos.distanceTo(endPos), [startPos, endPos]);
+    const startPos = useMemo(() => new THREE.Vector3(...start), [start]);
+    const endPos = useMemo(() => new THREE.Vector3(...end), [end]);
+    const length = startPos.distanceTo(endPos);
     const width = 8;
     const segmentCount = 20;
     const segmentLength = length / segmentCount;

@@ -31,13 +31,54 @@ interface GameState {
     isSitting: boolean;
     setSitting: (sitting: boolean) => void;
 
-    // Agent Inspection State
-    hoveredAgentId: string | null;
-    setHoveredAgentId: (id: string | null) => void;
-    inspectedAgentId: string | null;
-    setInspectedAgentId: (id: string | null) => void;
-    isChatOpen: boolean;
-    setChatOpen: (isOpen: boolean) => void;
+    isTeleporting: boolean;
+    setTeleporting: (teleporting: boolean) => void;
+
+    // Settings
+    invertedMouse: boolean;
+    setInvertedMouse: (inverted: boolean) => void;
+    sensitivity: number;
+    setSensitivity: (sensitivity: number) => void;
+    volume: number;
+    setVolume: (volume: number) => void;
+
+    // Menu State
+    isMenuOpen: boolean;
+    setMenuOpen: (isOpen: boolean) => void;
+
+    // Key Bindings
+    keyBindings: {
+        forward: string;
+        backward: string;
+        left: string;
+        right: string;
+        jump: string;
+        sprint: string;
+        interact: string;
+        menu: string;
+    };
+    setKeyBinding: (action: string, key: string) => void;
+
+    // --- NEW SETTINGS ---
+    aiSettings: {
+        enabled: boolean;
+        llmEnabled: boolean;
+        allowedCommands: string[];
+    };
+    setAISetting: (settings: Partial<{ enabled: boolean; llmEnabled: boolean; allowedCommands: string[] }>) => void;
+
+    graphicsSettings: {
+        quality: 'low' | 'medium' | 'high';
+        shadows: boolean;
+        weather: boolean;
+    };
+    setGraphicsSetting: (settings: Partial<{ quality: 'low' | 'medium' | 'high'; shadows: boolean; weather: boolean }>) => void;
+
+    gameplaySettings: {
+        headBob: boolean;
+        sprintToggle: boolean;
+    };
+    setGameplaySetting: (settings: Partial<{ headBob: boolean; sprintToggle: boolean }>) => void;
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -66,14 +107,60 @@ export const useGameStore = create<GameState>((set) => ({
 
     isSitting: false,
     setSitting: (sitting) => set({ isSitting: sitting }),
+    isTeleporting: false,
+    setTeleporting: (teleporting) => set({ isTeleporting: teleporting }),
 
-    // Agent Inspection State
-    hoveredAgentId: null,
-    setHoveredAgentId: (id: string | null) => set({ hoveredAgentId: id }),
+    // Settings
+    invertedMouse: false,
+    setInvertedMouse: (inverted) => set({ invertedMouse: inverted }),
+    sensitivity: 1.0,
+    setSensitivity: (sensitivity) => set({ sensitivity }),
+    volume: 0.5,
+    setVolume: (volume) => set({ volume }),
 
-    inspectedAgentId: null,
-    setInspectedAgentId: (id: string | null) => set({ inspectedAgentId: id }),
+    // Menu State
+    isMenuOpen: false,
+    setMenuOpen: (isOpen) => set({ isMenuOpen: isOpen }),
 
-    isChatOpen: false,
-    setChatOpen: (isOpen: boolean) => set({ isChatOpen: isOpen }),
+    // Key Bindings
+    keyBindings: {
+        forward: 'KeyW',
+        backward: 'KeyS',
+        left: 'KeyA',
+        right: 'KeyD',
+        jump: 'Space',
+        sprint: 'ShiftLeft',
+        interact: 'KeyE',
+        menu: 'Escape'
+    },
+    setKeyBinding: (action, key) => set((state) => ({
+        keyBindings: { ...state.keyBindings, [action]: key }
+    })),
+
+    // --- NEW SETTINGS IMPLEMENTATION ---
+    aiSettings: {
+        enabled: true,
+        llmEnabled: true,
+        allowedCommands: ['FOLLOW_ENTITY', 'NAVIGATE_TO_ANCHOR', 'NAVIGATE_TO_COORD', 'SOCIAL_INTERACT', 'HOLD_POSITION', 'IDLE']
+    },
+    setAISetting: (newSettings) => set((state) => ({
+        aiSettings: { ...state.aiSettings, ...newSettings }
+    })),
+
+    graphicsSettings: {
+        quality: 'high',
+        shadows: true,
+        weather: true
+    },
+    setGraphicsSetting: (newSettings) => set((state) => ({
+        graphicsSettings: { ...state.graphicsSettings, ...newSettings }
+    })),
+
+    gameplaySettings: {
+        headBob: true,
+        sprintToggle: false
+    },
+    setGameplaySetting: (newSettings) => set((state) => ({
+        gameplaySettings: { ...state.gameplaySettings, ...newSettings }
+    })),
 }));

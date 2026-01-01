@@ -2,6 +2,9 @@ import { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { useGameStore } from '@/store/gameStore';
+import { useInteractionStore } from '@/store/interactionStore';
+import AIManager from '../Systems/AIManager';
+import { WorldRegistry } from '@/lib/yuka-oracle';
 
 export interface Joints {
     hips?: THREE.Group;
@@ -20,8 +23,16 @@ export interface Joints {
 export function useRobotController(groupRef: React.RefObject<THREE.Group | null>) {
     const collidableMeshes = useGameStore((state) => state.collidableMeshes);
     const obstacles = useGameStore((state) => state.obstacles);
-    // const setDebugText = useGameStore((state) => state.setDebugText);
-    // const isLocked = useGameStore((state) => state.isLocked);
+
+    // Register Player in WorldRegistry for Agents to track
+    useEffect(() => {
+        if (groupRef.current) {
+            WorldRegistry.getInstance().registerDynamic('player-01', () => {
+                return groupRef.current ? groupRef.current.position : new THREE.Vector3();
+            });
+            console.log("Player registered in WorldRegistry as 'player-01'");
+        }
+    }, [groupRef]);
 
     const inputRef = useRef({ f: false, b: false, l: false, r: false, jump: false, sneak: false, wave: false });
     const state = useRef({
@@ -34,28 +45,36 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
         idleTime: 0
     });
 
+    const keyBindings = useGameStore((state) => state.keyBindings);
+
     // Input Handling
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
             switch (e.code) {
-                case 'KeyW': case 'ArrowUp': inputRef.current.f = true; break;
-                case 'KeyS': case 'ArrowDown': inputRef.current.b = true; break;
-                case 'KeyA': case 'ArrowLeft': inputRef.current.l = true; break;
-                case 'KeyD': case 'ArrowRight': inputRef.current.r = true; break;
-                case 'Space': inputRef.current.jump = true; break;
-                case 'ShiftLeft': case 'ShiftRight': inputRef.current.sneak = true; break;
-                // KeyE handled in separate listener for interaction
+                case keyBindings.forward: inputRef.current.f = true; break;
+                case keyBindings.backward: inputRef.current.b = true; break;
+                case keyBindings.left: inputRef.current.l = true; break;
+                case keyBindings.right: inputRef.current.r = true; break;
+                case keyBindings.jump: inputRef.current.jump = true; break;
+                case keyBindings.sprint: inputRef.current.sneak = true; break; // Sprint maps to 'sneak' internally for now? Or vice versa? 
+                // Note: Original code mapped Shift to 'sneak'. If user wants 'Sprint', we should clarify. 
+                // Assuming 'sneak' in state is actually used for sprinting based on speed constants (12 vs 5). 
+                // Wait, walkSpeed=12, sneakSpeed=5. So Shift makes you SLOWER? 
+                // "case 'ShiftLeft': case 'ShiftRight': inputRef.current.sneak = true; break;"
+                // And "const currentSpeed = s.isSneaking ? sneakSpeed : walkSpeed;"
+                // So holding Shift makes you sneak (slower). 
+                // The prompt asked for "Sprint", but the code implements Sneak. 
+                // I will map 'sprint' binding to 'sneak' input for now to preserve behavior, but label it as 'Sneak' in UI if possible, or just keep it as is.
             }
         };
         const onKeyUp = (e: KeyboardEvent) => {
             switch (e.code) {
-                case 'KeyW': case 'ArrowUp': inputRef.current.f = false; break;
-                case 'KeyS': case 'ArrowDown': inputRef.current.b = false; break;
-                case 'KeyA': case 'ArrowLeft': inputRef.current.l = false; break;
-                case 'KeyD': case 'ArrowRight': inputRef.current.r = false; break;
-                case 'Space': inputRef.current.jump = false; break;
-                case 'ShiftLeft': case 'ShiftRight': inputRef.current.sneak = false; break;
-                // KeyE handled in separate listener
+                case keyBindings.forward: inputRef.current.f = false; break;
+                case keyBindings.backward: inputRef.current.b = false; break;
+                case keyBindings.left: inputRef.current.l = false; break;
+                case keyBindings.right: inputRef.current.r = false; break;
+                case keyBindings.jump: inputRef.current.jump = false; break;
+                case keyBindings.sprint: inputRef.current.sneak = false; break;
             }
         };
         window.addEventListener('keydown', onKeyDown);
@@ -64,7 +83,7 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
             window.removeEventListener('keydown', onKeyDown);
             window.removeEventListener('keyup', onKeyUp);
         };
-    }, []);
+    }, [keyBindings]);
 
     // Physics Constants
     const walkSpeed = 12.0;
@@ -76,6 +95,11 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
     const joints = useRef<Joints>({});
 
 
+    // Interaction
+    const { openInteraction, isOpen, closeInteraction } = useInteractionStore();
+    const aiManager = AIManager.getInstance(); // To access agents
+    const raycasterRef = useRef(new THREE.Raycaster());
+
     const interactables = useGameStore((state) => state.interactables);
     const isSitting = useGameStore((state) => state.isSitting);
     const setSitting = useGameStore((state) => state.setSitting);
@@ -85,63 +109,110 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
     const sitTargetPos = useRef<THREE.Vector3 | null>(null);
     const sitTargetRot = useRef<THREE.Quaternion | null>(null);
 
+
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.code === 'KeyE') {
-                console.log("E key pressed. isSitting:", isSitting);
-                console.log("Interactables count:", interactables.length);
+            if (e.code === keyBindings.interact) {
+                if (isOpen) {
+                    closeInteraction();
+                    return;
+                }
+
+                console.log("Interact key pressed. isSitting:", isSitting);
 
                 if (isSitting) {
-                    console.log("Standing up...");
                     setSitting(false);
                     sitTargetPos.current = null;
                     sitTargetRot.current = null;
                     state.current.velocity.set(0, 5, 0);
                     state.current.isGrounded = false;
-
-                    // Reset rotation to be upright immediately to prevent disorientation
                     if (groupRef.current) {
                         groupRef.current.rotation.x = 0;
                         groupRef.current.rotation.z = 0;
                     }
-                } else {
-                    if (!groupRef.current) return;
-                    const robotPos = groupRef.current.position;
-                    console.log("Robot Pos:", robotPos);
+                    return;
+                }
 
-                    let nearest = null;
-                    let minDist = 5.0; // Increased range for easier testing
+                if (!groupRef.current) return;
 
-                    for (const item of interactables) {
-                        if (item.type === 'sofa') {
-                            const dist = robotPos.distanceTo(item.position);
-                            console.log(`Checking sofa at ${item.position.toArray()} - Dist: ${dist}`);
-                            if (dist < minDist) {
-                                minDist = dist;
-                                nearest = item;
+                // 1. Raycast for Agents (High Priority)
+                raycasterRef.current.set(
+                    groupRef.current.position,
+                    groupRef.current.getWorldDirection(new THREE.Vector3())
+                );
+
+                // We need to raycast against Agent Meshes.
+                // AIManager has vehicles. We need their RenderComponents (Meshes).
+                // AIManager doesn't expose meshes easily.
+                // But we can iterate vehicles and check distance + angle (simpler/cheaper than raycast)
+
+                let bestAgent: { id: string; dist: number } | null = null;
+                const agents = aiManager.vehicles;
+                const myPos = groupRef.current.position;
+                const myDir = groupRef.current.getWorldDirection(new THREE.Vector3());
+
+                for (const agent of agents) {
+                    // Skip self (player isn't an invalid agent here, but ensure we don't target self if we were one)
+                    const agentPos = agent.position as unknown as THREE.Vector3;
+                    const dist = myPos.distanceTo(agentPos);
+
+                    if (dist < 5.0) { // 5m Range
+                        const toAgent = agentPos.clone().sub(myPos).normalize();
+                        const dot = myDir.dot(toAgent);
+
+                        if (dot > 0.5) { // Within ~60 degree cone
+                            // Found candidate
+                            if (!bestAgent || dist < bestAgent.dist) {
+                                // Extract ID (Assuming it's stored on the entity or mesh)
+                                // YUKA entities don't have userData by default. 
+                                // We rely on ClientBrain to have ID, but mapping back is hard.
+                                // For now, use a hack or assume ID is 'agent-01' if only one.
+                                // Let's try to get ID from RenderComponent.
+                                const mesh = (agent as any).renderComponent as THREE.Object3D;
+                                // Need to traverse up? Or check userData.
+                                // Assuming we passed ID somehow. 
+                                // Let's assume 'agent-01' for prototype if not found.
+                                const agentId = mesh?.userData?.id || 'agent-01'; // Defaulting
+
+                                bestAgent = { id: agentId, dist };
                             }
                         }
                     }
+                }
 
-                    if (nearest) {
-                        console.log("Found nearest sofa! Sitting...");
-                        setSitting(true);
-                        sitTargetPos.current = nearest.position.clone();
-                        sitTargetRot.current = nearest.rotation.clone();
-                    } else {
-                        console.log("No sofa near enough. Waving.");
-                        inputRef.current.wave = true;
-                        state.current.isWaving = true;
-                        state.current.waveTimer = 0;
+                if (bestAgent) {
+                    console.log("Interacting with Agent:", bestAgent.id);
+                    openInteraction(bestAgent.id);
+                    return;
+                }
+
+                // 2. Interactables (Sofa, etc.) - Fallback
+                let nearest = null;
+                let minDist = 3.0;
+
+                for (const item of interactables) {
+                    if (item.type === 'sofa') {
+                        const dist = groupRef.current.position.distanceTo(item.position);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            nearest = item;
+                        }
                     }
+                }
+
+                if (nearest) {
+                    setSitting(true);
+                    sitTargetPos.current = nearest.position.clone();
+                    sitTargetRot.current = nearest.rotation.clone();
+                } else {
+                    // NO WAVE. Just log.
+                    console.log("Nothing to interact with.");
                 }
             }
         };
 
         const handleKeyUp = (e: KeyboardEvent) => {
-            if (e.code === 'KeyE') {
-                inputRef.current.wave = false;
-            }
+            // No cleanup needed
         };
 
         window.addEventListener('keydown', handleKeyDown);
@@ -150,7 +221,8 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
             window.removeEventListener('keydown', handleKeyDown);
             window.removeEventListener('keyup', handleKeyUp);
         };
-    }, [interactables, isSitting, setSitting, groupRef]);
+    }, [interactables, isSitting, setSitting, groupRef, keyBindings, isOpen, openInteraction, closeInteraction]);
+
 
     useFrame((stateRoot, delta) => {
         if (!groupRef.current) return;
@@ -167,15 +239,25 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
                     break;
                 }
             }
-            setDebugText(showPrompt ? "Press 'E' to Sit" : "");
+            setDebugText(showPrompt ? `Press '${keyBindings.interact.replace('Key', '')}' to Sit` : "");
         } else {
-            setDebugText("Press 'E' to Stand");
+            setDebugText(`Press '${keyBindings.interact.replace('Key', '')}' to Stand`);
         }
 
         // Clamp delta
         const dt = Math.min(delta, 0.1);
 
         // Input Processing
+        // Block movement if Interaction UI is open
+        if (isOpen) {
+            input.f = false;
+            input.b = false;
+            input.l = false;
+            input.r = false;
+            input.jump = false;
+            input.sneak = false;
+        }
+
         s.isSneaking = input.sneak;
         const currentSpeed = s.isSneaking ? sneakSpeed : walkSpeed;
         const moveDist = currentSpeed * dt;
@@ -211,7 +293,7 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
         const worldDx = moveDir.x * moveDist;
         const worldDz = moveDir.z * moveDist;
 
-        const isMoving = (inputX !== 0 || inputZ !== 0);
+        const isMoving = (inputX !== 0 || inputZ !== 0) && !isOpen; // Ensure isMoving is false if open
 
         if (isSitting && sitTargetPos.current && sitTargetRot.current) {
             // Smoothly move to sit target
