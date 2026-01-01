@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as YUKA from 'yuka';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
@@ -14,7 +14,7 @@ export function useWorkerAI(
     const [holdingBox, setHoldingBox] = useState<any>(null);
 
     const vehicleRef = useRef<YUKA.Vehicle>(new YUKA.Vehicle());
-    const entityManager = new YUKA.EntityManager();
+    const entityManager = useMemo(() => new YUKA.EntityManager(), []);
     const timeRef = useRef(0);
 
     const targetBoxRef = useRef<any>(null); // The box we are targeting
@@ -31,7 +31,7 @@ export function useWorkerAI(
         entityManager.add(vehicle);
 
         return () => {
-            entityManager.entities = []; // Manually clear
+            entityManager.remove(vehicle);
         };
     }, []);
 

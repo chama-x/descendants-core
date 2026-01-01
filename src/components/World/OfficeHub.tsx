@@ -227,7 +227,7 @@ export default function OfficeHub() {
             {/* --- LIGHTING --- */}
 
             {/* General Overhead Ambiance (Soft, Cool Office Light) */}
-            <hemisphereLight intensity={0.5} groundColor="#444" skyColor="#fff" />
+            <hemisphereLight intensity={0.5} groundColor="#444" color="#fff" />
 
             {/* Key Construction Area Light */}
             <spotLight
