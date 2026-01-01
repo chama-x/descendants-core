@@ -152,7 +152,8 @@ function animateProcedural(vehicle: YUKA.Vehicle, joints: React.MutableRefObject
     if (speed > 0.1) {
         // --- MOVING ---
         const isRunning = speed > 8.0; // Lowered threshold for responsiveness
-        walkTime.current += dt * (isRunning ? 15.0 : 10.0); // Polished cadence (was 18)
+        // Slower cadence to match physics speed (Legs were "too fast")
+        walkTime.current += dt * (isRunning ? 13.0 : 9.0);
 
         const legAmp = isRunning ? 1.0 : 0.6; // Bigger strides
         const kneeAmp = isRunning ? 0.6 : 0.3; // High knees
@@ -163,15 +164,15 @@ function animateProcedural(vehicle: YUKA.Vehicle, joints: React.MutableRefObject
 
         // --- Biomechanical Rotations ---
         // 1. Hip Yaw
-        const hipYawAmp = isRunning ? 0.15 : 0.08;
+        const hipYawAmp = isRunning ? 0.1 : 0.05;
         j.hips.rotation.y = Math.sin(walkTime.current) * -hipYawAmp;
 
         // 2. Hip Roll
-        const hipRollAmp = isRunning ? 0.05 : 0.08;
+        const hipRollAmp = isRunning ? 0.02 : 0.03;
         j.hips.rotation.z = Math.cos(walkTime.current) * hipRollAmp;
 
         // 3. Torso Counter-Rotation
-        const torsoYawAmp = isRunning ? 0.3 : 0.15;
+        const torsoYawAmp = isRunning ? 0.15 : 0.08;
         j.torso.rotation.y = Math.sin(walkTime.current) * torsoYawAmp;
 
         // Legs
@@ -186,13 +187,13 @@ function animateProcedural(vehicle: YUKA.Vehicle, joints: React.MutableRefObject
         j.leftArm.shoulder.rotation.x = Math.sin(walkTime.current + Math.PI) * armAmp;
         j.rightArm.shoulder.rotation.x = Math.sin(walkTime.current) * armAmp;
 
-        // TUCK ARMS IN
-        const armTuck = isRunning ? -0.2 : 0.2;
+        // TUCK ARMS IN: Relaxed tuck
+        const armTuck = isRunning ? 0.05 : 0.2;
         j.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.z, armTuck, lerpFactor);
         j.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.z, -armTuck, lerpFactor);
 
         // DYNAMIC YAW (Hand-to-Cheek Mechanism)
-        const yawAmp = isRunning ? 0.6 : 0.1;
+        const yawAmp = isRunning ? 0.8 : 0.1; // Increased to 0.8
         const yawBias = isRunning ? -0.5 : 0;
 
         // Left Arm

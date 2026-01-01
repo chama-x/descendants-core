@@ -427,9 +427,9 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
                 s.isWaving = false;
             }
         } else if (isMoving && s.isGrounded) {
-
             // Speed of animation loop depends on speed of movement
-            const animSpeed = isRunning ? 15 : (isCrouching ? 8 : 10);
+            // Reduced to fix "legs moving too fast" (Sync with Physics Speed: Walk=6, Run=14)
+            const animSpeed = isRunning ? 13 : (isCrouching ? 6 : 9);
             s.walkTime += dt * animSpeed;
 
             const legAmp = isCrouching ? 0.3 : (isRunning ? 1.0 : 0.6);
@@ -445,15 +445,18 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
 
             // --- Biomechanical Rotations ---
             // 1. Hip Yaw: Hips rotate to extend stride (Left leg forward = Hips Turn Right)
-            const hipYawAmp = isRunning ? 0.15 : 0.08;
+            // Reduced to fix "wobbly" feel
+            const hipYawAmp = isRunning ? 0.1 : 0.05;
             j.hips.rotation.y = Math.sin(s.walkTime) * -hipYawAmp;
 
             // 2. Hip Roll: Hips drop on the swing side (Trendelenburg sign-lite)
-            const hipRollAmp = isRunning ? 0.05 : 0.08;
+            // Significantly reduced to stabilize core (Professional/Stiff)
+            const hipRollAmp = isRunning ? 0.02 : 0.03;
             j.hips.rotation.z = Math.cos(s.walkTime) * hipRollAmp;
 
             // 3. Torso Counter-Rotation: Shoulders rotate opposite to hips
-            const torsoYawAmp = isRunning ? 0.3 : 0.15;
+            // Dampened for more "focused" forward drive
+            const torsoYawAmp = isRunning ? 0.15 : 0.08;
             j.torso.rotation.y = Math.sin(s.walkTime) * torsoYawAmp;
 
             // Legs
@@ -479,19 +482,14 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
                 j.leftArm.shoulder.rotation.x = Math.sin(s.walkTime + Math.PI) * armAmp;
                 j.rightArm.shoulder.rotation.x = Math.sin(s.walkTime) * armAmp;
 
-                // TUCK ARMS IN: Negative Z to pull slightly across/down
-                const armTuck = isRunning ? -0.2 : 0.2;
+                // TUCK ARMS IN: Relaxed tuck, not super tight (-0.2 was too tight)
+                const armTuck = isRunning ? 0.1 : 0.2;
                 j.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.z, armTuck, lerpFactor);
                 j.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.z, -armTuck, lerpFactor);
 
-                // DYNAMIC YAW (Hand-to-Cheek Mechanism)
-                // We want Internal Rotation (Hand In) when Arm is Swing Forward (Flexion).
-                // Left Arm: Swing is sin(t + PI). Max Forward is +1.
-                // We want Max Inward Rotation (-Y) at that peak.
-                // So: -1 * (SwingPhase + 1) * magnitude
-
-                const yawAmp = isRunning ? 0.6 : 0.1;
-                const yawBias = isRunning ? -0.5 : 0; // Base internal rotation
+                // DYNAMIC YAW (Hand-to-Cheek Mechanism) with stronger compensation
+                const yawAmp = isRunning ? 0.8 : 0.1; // Increased to 0.8 to force forearm in
+                const yawBias = isRunning ? -0.5 : 0;
 
                 // Left: Forward = sin(t + PI). Inward = -Y.
                 const leftSwing = Math.sin(s.walkTime + Math.PI);
