@@ -118,60 +118,118 @@ export function useYukaAI(
         const playerPos = playerRef.current ? playerRef.current.position : undefined;
         engine.update(dt, playerPos);
 
-        // 1. Ground Clamping (Simplified)
-        if (collidableMeshes.length > 0 && frameRef.current % 2 === 0) {
-            const raycaster = raycasterRef.current;
-            raycaster.set(
-                new THREE.Vector3(vehicle.position.x, vehicle.position.y + 5, vehicle.position.z),
-                rayDirRef.current
-            );
-            const hits = raycaster.intersectObjects(collidableMeshes, true);
-            if (hits.length > 0) {
-                const groundY = hits[0].point.y;
-                if (vehicle.position.y > groundY) {
-                    vehicle.position.y = THREE.MathUtils.lerp(vehicle.position.y, groundY, 0.2);
+        const WATER_SURFACE_Y = 0.0;
+        // AI enters swim mode when waist deep
+        const inWater = vehicle.position.y < (WATER_SURFACE_Y - 0.8);
+
+        if (inWater) {
+            // --- AI SWIMMING PHYSICS ---
+            const targetSurfaceY = WATER_SURFACE_Y - 0.75;
+            const bob = Math.sin(state.clock.getElapsedTime() * 2) * 0.05;
+
+            // Float to surface
+            vehicle.position.y = THREE.MathUtils.lerp(vehicle.position.y, targetSurfaceY + bob, 0.1);
+
+            // Apply Drag (Slow down AI in water)
+            vehicle.velocity.multiplyScalar(0.95);
+
+        } else {
+            // --- GROUND CLAMPING (Land Physics) ---
+            if (collidableMeshes.length > 0 && frameRef.current % 2 === 0) {
+                const raycaster = raycasterRef.current;
+                raycaster.set(
+                    new THREE.Vector3(vehicle.position.x, vehicle.position.y + 5, vehicle.position.z),
+                    rayDirRef.current
+                );
+                const hits = raycaster.intersectObjects(collidableMeshes, true);
+                if (hits.length > 0) {
+                    const groundY = hits[0].point.y;
+                    // Only clamp if above ground or falling slightly
+                    if (vehicle.position.y > groundY - 0.5) {
+                        vehicle.position.y = THREE.MathUtils.lerp(vehicle.position.y, groundY, 0.2);
+                    }
                 }
             }
         }
 
         // 2. Animation Blending (Procedural)
-        animateProcedural(vehicle, joints, walkTime, dt);
+        animateProcedural(vehicle, joints, walkTime, dt, inWater, state.clock.getElapsedTime());
     });
 
     return { vehicle: vehicleRef.current, brain: brainRef.current };
 }
 
-// --- PROCEDURAL ANIMATION (Moved out for clarity) ---
-function animateProcedural(vehicle: YUKA.Vehicle, joints: React.MutableRefObject<any>, walkTime: React.MutableRefObject<number>, dt: number) {
+// --- PROCEDURAL ANIMATION ---
+function animateProcedural(
+    vehicle: YUKA.Vehicle,
+    joints: React.MutableRefObject<any>,
+    walkTime: React.MutableRefObject<number>,
+    dt: number,
+    inWater: boolean,
+    totalTime: number
+) {
     const speed = vehicle.velocity.length();
     const j = joints.current;
     const lerpFactor = 0.1; // For smoothing transitions
 
     if (!j.hips) return;
 
-    if (speed > 0.1) {
-        // --- MOVING ---
-        const isRunning = speed > 8.0; // Lowered threshold for responsiveness
-        // Slower cadence to match physics speed (Legs were "too fast")
+    if (inWater) {
+        // --- SWIMMING ANIMATION (Ported from Player) ---
+        walkTime.current += dt * 6.0;
+
+        // 1. Posture (Prone)
+        j.hips.rotation.x = THREE.MathUtils.lerp(j.hips.rotation.x, 1.6, lerpFactor);
+        j.hips.position.y = THREE.MathUtils.lerp(j.hips.position.y, 4.2, lerpFactor);
+        j.neck.rotation.x = THREE.MathUtils.lerp(j.neck.rotation.x, -1.2, lerpFactor);
+
+        // 2. Body Roll
+        const bodyRoll = Math.sin(walkTime.current) * 0.4;
+        j.hips.rotation.z = bodyRoll;
+        j.torso.rotation.z = bodyRoll * 0.5;
+
+        // 3. Arms (Alternating Crawl)
+        j.leftArm.shoulder.rotation.x = -Math.PI / 2 + Math.sin(walkTime.current) * 1.5;
+        j.leftArm.shoulder.rotation.z = Math.max(0, -Math.cos(walkTime.current)) + 0.2;
+        j.leftArm.elbow.rotation.z = Math.max(0, -Math.cos(walkTime.current) * 1.5);
+
+        j.rightArm.shoulder.rotation.x = -Math.PI / 2 + Math.sin(walkTime.current + Math.PI) * 1.5;
+        j.rightArm.shoulder.rotation.z = -(Math.max(0, -Math.cos(walkTime.current + Math.PI)) + 0.2);
+        j.rightArm.elbow.rotation.z = -(Math.max(0, -Math.cos(walkTime.current + Math.PI) * 1.5));
+
+        // 4. Legs (Flutter)
+        const kickFreq = 12.0;
+        j.leftHip.rotation.x = Math.sin(totalTime * kickFreq) * 0.3;
+        j.rightHip.rotation.x = Math.sin(totalTime * kickFreq + Math.PI) * 0.3;
+        j.leftKnee.rotation.x = 0.3 + Math.sin(totalTime * kickFreq) * 0.3;
+        j.rightKnee.rotation.x = 0.3 + Math.sin(totalTime * kickFreq + Math.PI) * 0.3;
+
+        // Reset Standing Rotations
+        j.hips.rotation.y = THREE.MathUtils.lerp(j.hips.rotation.y, 0, lerpFactor);
+        j.torso.rotation.y = THREE.MathUtils.lerp(j.torso.rotation.y, 0, lerpFactor);
+
+    } else if (speed > 0.1) {
+        // --- MOVING (WALK/RUN) ---
+        const isRunning = speed > 6.0;
         walkTime.current += dt * (isRunning ? 13.0 : 9.0);
 
-        const legAmp = isRunning ? 1.0 : 0.6; // Bigger strides
-        const kneeAmp = isRunning ? 0.6 : 0.3; // High knees
+        const legAmp = isRunning ? 1.0 : 0.6;
+        const kneeAmp = isRunning ? 0.6 : 0.3;
 
-        // Hips Bob (Flight Phase)
+        // Hips Bob
         const bobScale = isRunning ? 0.35 : 0.15;
         j.hips.position.y = THREE.MathUtils.lerp(j.hips.position.y, 3.5 + Math.sin(walkTime.current * 2) * bobScale, lerpFactor);
 
-        // --- Biomechanical Rotations ---
-        // 1. Hip Yaw
+        // Reset Swim Rotations
+        j.hips.rotation.x = THREE.MathUtils.lerp(j.hips.rotation.x, 0, lerpFactor);
+
+        // Biomechanical Rotations
         const hipYawAmp = isRunning ? 0.1 : 0.05;
         j.hips.rotation.y = Math.sin(walkTime.current) * -hipYawAmp;
 
-        // 2. Hip Roll
         const hipRollAmp = isRunning ? 0.02 : 0.03;
         j.hips.rotation.z = Math.cos(walkTime.current) * hipRollAmp;
 
-        // 3. Torso Counter-Rotation
         const torsoYawAmp = isRunning ? 0.15 : 0.08;
         j.torso.rotation.y = Math.sin(walkTime.current) * torsoYawAmp;
 
@@ -183,48 +241,42 @@ function animateProcedural(vehicle: YUKA.Vehicle, joints: React.MutableRefObject
         j.rightKnee.rotation.x = Math.abs(Math.cos(walkTime.current + Math.PI)) * kneeAmp + 0.2;
 
         // Arms (Runner Arms)
-        const armAmp = isRunning ? 1.2 : 0.6; // Vigorous swing
+        const armAmp = isRunning ? 1.2 : 0.6;
+        const armTuck = isRunning ? 0.05 : 0.2;
+
         j.leftArm.shoulder.rotation.x = Math.sin(walkTime.current + Math.PI) * armAmp;
         j.rightArm.shoulder.rotation.x = Math.sin(walkTime.current) * armAmp;
-
-        // TUCK ARMS IN: Relaxed tuck
-        const armTuck = isRunning ? 0.05 : 0.2;
         j.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.z, armTuck, lerpFactor);
         j.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.z, -armTuck, lerpFactor);
 
-        // DYNAMIC YAW (Hand-to-Cheek Mechanism)
-        const yawAmp = isRunning ? 0.8 : 0.1; // Increased to 0.8
+        // Dynamic Yaw
+        const yawAmp = isRunning ? 0.8 : 0.1;
         const yawBias = isRunning ? -0.5 : 0;
 
-        // Left Arm
         const leftSwing = Math.sin(walkTime.current + Math.PI);
         const leftDynamicYaw = (leftSwing * 0.5 + 0.5) * -yawAmp + yawBias;
-
-        // Right Arm (Mirrored)
         const rightSwing = Math.sin(walkTime.current);
         const rightDynamicYaw = (rightSwing * 0.5 + 0.5) * yawAmp - yawBias;
 
         j.leftArm.shoulder.rotation.y = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.y, leftDynamicYaw, lerpFactor);
         j.rightArm.shoulder.rotation.y = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.y, rightDynamicYaw, lerpFactor);
 
-        // Elbows (Bend when running)
-        // Resetting X-bend which might be default T-pose artifact from broken code before
-        // j.leftArm.elbow.rotation.x ... ignore
-
         j.leftArm.elbow.rotation.z = THREE.MathUtils.lerp(j.leftArm.elbow.rotation.z, isRunning ? 1.5 : 0, lerpFactor);
         j.rightArm.elbow.rotation.z = THREE.MathUtils.lerp(j.rightArm.elbow.rotation.z, isRunning ? -1.5 : 0, lerpFactor);
 
-
-        // Lean into run
         j.torso.rotation.x = THREE.MathUtils.lerp(j.torso.rotation.x, isRunning ? 0.4 : 0.1, lerpFactor);
         j.neck.rotation.y = THREE.MathUtils.lerp(j.neck.rotation.y, 0, lerpFactor);
+        j.neck.rotation.x = THREE.MathUtils.lerp(j.neck.rotation.x, 0, lerpFactor);
+
 
     } else {
-        // Idle
+        // --- IDLE ---
         walkTime.current += dt;
         j.hips.position.y = THREE.MathUtils.lerp(j.hips.position.y, 3.5 + Math.sin(walkTime.current) * 0.05, lerpFactor);
 
-        // Reset limbs
+        // Reset ALL rotations
+        j.hips.rotation.x = THREE.MathUtils.lerp(j.hips.rotation.x, 0, lerpFactor);
+        j.hips.rotation.z = THREE.MathUtils.lerp(j.hips.rotation.z, 0, lerpFactor);
         j.leftHip.rotation.x = THREE.MathUtils.lerp(j.leftHip.rotation.x, 0, lerpFactor);
         j.rightHip.rotation.x = THREE.MathUtils.lerp(j.rightHip.rotation.x, 0, lerpFactor);
         j.leftKnee.rotation.x = THREE.MathUtils.lerp(j.leftKnee.rotation.x, 0, lerpFactor);
@@ -233,6 +285,7 @@ function animateProcedural(vehicle: YUKA.Vehicle, joints: React.MutableRefObject
         j.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.x, 0, lerpFactor);
         j.torso.rotation.x = THREE.MathUtils.lerp(j.torso.rotation.x, 0, lerpFactor);
         j.neck.rotation.y = THREE.MathUtils.lerp(j.neck.rotation.y, 0, lerpFactor);
+        j.neck.rotation.x = THREE.MathUtils.lerp(j.neck.rotation.x, 0, lerpFactor);
     }
 }
 

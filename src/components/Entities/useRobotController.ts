@@ -289,43 +289,75 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
             mesh.rotation.x = 0;
             mesh.rotation.z = 0;
 
+            // --- 1. GLOBAL GROUND CHECK ---
+            // We need ground height for both Walking AND preventing swimming through terrain.
+            let groundHeight = -50; // Default void
+            if (collidableMeshes.length > 0) {
+                // Raycast from high up to find ground
+                raycasterRef.current.set(
+                    new THREE.Vector3(mesh.position.x, mesh.position.y + 10, mesh.position.z),
+                    new THREE.Vector3(0, -1, 0)
+                );
+                // We use raycasterRef for performance
+                const hits = raycasterRef.current.intersectObjects(collidableMeshes, true);
+                if (hits.length > 0) {
+                    groundHeight = hits[0].point.y;
+                }
+            }
+
+            // --- 2. WATER DETECTION & HYSTERESIS ---
             const WATER_SURFACE_Y = 0.0;
-            // Easier trigger: Enter swim mode when slightly submerged (Waist deep ~1.0m, or Knee ~0.5m)
-            const inWater = mesh.position.y < (WATER_SURFACE_Y - 0.8);
+            const wasSwimming = s.posture === 'SWIM';
+
+            // Hysteresis buffers:
+            // Enter Swim: When deeply submerged (Chest deep)
+            // Exit Swim: When clearly higher (Waist deep)
+            const enterThreshold = WATER_SURFACE_Y - 0.85;
+            const exitThreshold = WATER_SURFACE_Y - 0.65;
+            const threshold = wasSwimming ? exitThreshold : enterThreshold;
+
+            // Ground Clearance Check:
+            // If the water is too shallow (e.g. standing on a rock just below surface), 
+            // force Walking instead of Swimming.
+            const minSwimDepth = 1.0; // Needs 1m of water depth to swim
+            const waterDepthAtPos = WATER_SURFACE_Y - groundHeight;
+            const isDeepEnough = waterDepthAtPos > minSwimDepth;
+
+            const inWater = (mesh.position.y < threshold) && isDeepEnough;
 
             if (inWater) {
                 currentSpeed = 7.0; // Surface Swim speed
                 posture = 'SWIM';
-                s.posture = 'SWIM'; // FIX: Ensure animation state receives update!
+                s.posture = 'SWIM';
 
-                // --- SURFACE SWIMMING (NO DIVING) ---
-                // Lock to surface height (Chest/Shoulders submerged)
-                const targetSurfaceY = WATER_SURFACE_Y - 0.75; // Raised slightly to show shoulders
-                // Smoothly bob at surface
+                // --- SURFACE SWIMMING ---
+                // Lock to surface height
+                const targetSurfaceY = WATER_SURFACE_Y - 0.75;
                 const bob = Math.sin(stateRoot.clock.getElapsedTime() * 2) * 0.05;
-                mesh.position.y = THREE.MathUtils.lerp(mesh.position.y, targetSurfaceY + bob, 0.1);
-                s.velocity.y = 0; // No vertical velocity
 
-                // 2. Drag (Water resistance) - Only XZ needed
+                // Lerp to surface
+                mesh.position.y = THREE.MathUtils.lerp(mesh.position.y, targetSurfaceY + bob, 0.1);
+
+                // Double check we aren't clipping ground even if "isDeepEnough" passed initially
+                // (e.g. fast movement into slope).
+                if (mesh.position.y < groundHeight) {
+                    mesh.position.y = groundHeight;
+                }
+
+                s.velocity.y = 0;
+
+                // Drag
                 s.velocity.x *= 0.92;
                 s.velocity.z *= 0.92;
 
-                // 3. 2D Movement (Strictly Horizontal)
+                // Horizontal Movement
                 const swimForce = currentSpeed * 2.0;
-
                 if (input.f) s.velocity.addScaledVector(camForward, swimForce * dt);
                 if (input.b) s.velocity.addScaledVector(camForward, -swimForce * dt);
                 if (input.l) s.velocity.addScaledVector(camRight, -swimForce * dt);
                 if (input.r) s.velocity.addScaledVector(camRight, swimForce * dt);
 
-                // No Vertical Controls (Jump can maybe jump out of water?)
-                if (input.jump) {
-                    // Optional: "Dolphin Jump" if moving fast? Or just ignore.
-                    // Let's allow jumping OUT of water if near edge? 
-                    // For now, strict surface swimming as requested.
-                }
-
-                // Cap Horizontal Velocity
+                // Cap Velocity
                 const maxSwimSpeed = 8.0;
                 const horizontalVel = new THREE.Vector2(s.velocity.x, s.velocity.z);
                 if (horizontalVel.length() > maxSwimSpeed) {
@@ -334,11 +366,11 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
                     s.velocity.z = horizontalVel.y;
                 }
 
-                // Apply Position (XZ only handled here, Y handled by clamp above)
+                // Apply
                 mesh.position.x += s.velocity.x * dt;
                 mesh.position.z += s.velocity.z * dt;
 
-                // Rotation (Face movement direction)
+                // Rotation
                 if (Math.abs(s.velocity.x) > 0.1 || Math.abs(s.velocity.z) > 0.1) {
                     const targetAngle = Math.atan2(s.velocity.x, s.velocity.z);
                     let diff = targetAngle - mesh.rotation.y;
@@ -378,18 +410,8 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
                     mesh.position.z = proposedZ;
                 }
 
-                // Gravity / Ground
-                let groundHeight = -10;
-                if (collidableMeshes.length > 0) {
-                    const raycaster = new THREE.Raycaster();
-                    const rayOrigin = mesh.position.clone();
-                    rayOrigin.y += 50;
-                    raycaster.set(rayOrigin, new THREE.Vector3(0, -1, 0));
-                    const hits = raycaster.intersectObjects(collidableMeshes, true);
-                    if (hits.length > 0) groundHeight = hits[0].point.y;
-                }
-
                 const groundMeshY = groundHeight;
+
 
                 if (s.isGrounded) {
                     if (input.jump) {
