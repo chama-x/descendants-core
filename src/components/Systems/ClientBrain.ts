@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { generateAgentThought, AgentContext, NearbyEntity } from '@/app/actions';
+import { GlobalRateLimiter } from '@/lib/global-rate-limiter';
+import { YukaOracle } from '@/lib/yuka-oracle';
 
 export interface BrainState {
     thought: string;
     isThinking: boolean;
     lastThoughtTime: number;
 }
-
-import { RateLimiter } from '@/lib/rateLimiter';
 
 export interface AgentDecision {
     action: 'MOVE_TO' | 'WAIT' | 'WANDER' | 'FOLLOW';
@@ -18,7 +18,8 @@ export interface AgentDecision {
 
 export class ClientBrain {
     public state: BrainState;
-    private rateLimiter: RateLimiter;
+    private rateLimiter: GlobalRateLimiter;
+    private oracle: YukaOracle;
     private id: string;
 
     constructor(id: string = 'agent-01') {
@@ -28,8 +29,11 @@ export class ClientBrain {
             isThinking: false,
             lastThoughtTime: 0
         };
-        // 25 requests per 60 seconds (Groq Cloud Free Tier allows 30, using 25 for headroom)
-        this.rateLimiter = new RateLimiter(25, 60);
+        // Use Global Shared Limiter
+        this.rateLimiter = GlobalRateLimiter.getInstance();
+
+        // Neuro-Symbolic Bridge (Client Side)
+        this.oracle = new YukaOracle();
     }
 
     public async update(
@@ -45,11 +49,16 @@ export class ClientBrain {
 
         this.state.isThinking = true;
 
+        // Generate Physics/Spatial Context locally using Yuka logic
+        // This ensures the LLM receives "grounded" facts
+        const spatialContext = this.oracle.generateSpatialContext(this.id);
+
         // Construct Context
         const context: AgentContext = {
             position: { x: position.x, y: position.y, z: position.z },
             nearbyEntities: nearbyEntities,
-            currentBehavior: currentBehavior
+            currentBehavior: currentBehavior,
+            spatialContext: spatialContext // Inject symbolic data
         };
 
         try {

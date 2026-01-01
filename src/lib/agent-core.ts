@@ -26,6 +26,7 @@ export interface AgentContext {
     position: { x: number; y: number; z: number };
     nearbyEntities: NearbyEntity[];
     currentBehavior: string;
+    spatialContext?: string;
 }
 
 /** Output from Layer 2 (Limbic) - Quick reactions */
@@ -145,12 +146,13 @@ React instantly.`;
 export async function processNeocortexThought(
     triggerType: TriggerType,
     contextMixer: ContextMixer,
-    additionalContext?: string
+    additionalContext?: string,
+    spatialOverride?: string
 ): Promise<NeocortexResponse> {
     const MAX_RETRIES = 3;
     let attempt = 0;
 
-    const context = contextMixer.buildContext(triggerType);
+    const context = contextMixer.buildContext(triggerType, { spatial: spatialOverride });
 
     const userPrompt = `## State
 ${context}
@@ -243,7 +245,8 @@ export async function processAgentThought(context: AgentContext): Promise<string
     const result = await processNeocortexThought(
         'PERCEPTION',
         mixer,
-        `Position: (${context.position.x.toFixed(1)}, ${context.position.y.toFixed(1)}, ${context.position.z.toFixed(1)})\nBehavior: ${context.currentBehavior}`
+        `Position: (${context.position.x.toFixed(1)}, ${context.position.y.toFixed(1)}, ${context.position.z.toFixed(1)})\nBehavior: ${context.currentBehavior}`,
+        context.spatialContext
     );
 
     return JSON.stringify(result);
