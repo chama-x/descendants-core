@@ -2,6 +2,8 @@ import { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { useGameStore } from '@/store/gameStore';
+import { useInteractionStore } from '@/store/interactionStore';
+import AIManager from '../Systems/AIManager';
 
 export interface Joints {
     hips?: THREE.Group;
@@ -84,6 +86,11 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
     const joints = useRef<Joints>({});
     const rb = useRef<any>(null);
 
+    // Interaction
+    const { openInteraction, isOpen, closeInteraction } = useInteractionStore();
+    const aiManager = AIManager.getInstance(); // To access agents
+    const raycasterRef = useRef(new THREE.Raycaster());
+
     const interactables = useGameStore((state) => state.interactables);
     const isSitting = useGameStore((state) => state.isSitting);
     const setSitting = useGameStore((state) => state.setSitting);
@@ -93,63 +100,110 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
     const sitTargetPos = useRef<THREE.Vector3 | null>(null);
     const sitTargetRot = useRef<THREE.Quaternion | null>(null);
 
+
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.code === keyBindings.interact) {
+                if (isOpen) {
+                    closeInteraction();
+                    return;
+                }
+
                 console.log("Interact key pressed. isSitting:", isSitting);
-                console.log("Interactables count:", interactables.length);
 
                 if (isSitting) {
-                    console.log("Standing up...");
                     setSitting(false);
                     sitTargetPos.current = null;
                     sitTargetRot.current = null;
                     state.current.velocity.set(0, 5, 0);
                     state.current.isGrounded = false;
-
-                    // Reset rotation to be upright immediately to prevent disorientation
                     if (groupRef.current) {
                         groupRef.current.rotation.x = 0;
                         groupRef.current.rotation.z = 0;
                     }
-                } else {
-                    if (!groupRef.current) return;
-                    const robotPos = groupRef.current.position;
-                    console.log("Robot Pos:", robotPos);
+                    return;
+                }
 
-                    let nearest = null;
-                    let minDist = 5.0; // Increased range for easier testing
+                if (!groupRef.current) return;
 
-                    for (const item of interactables) {
-                        if (item.type === 'sofa') {
-                            const dist = robotPos.distanceTo(item.position);
-                            console.log(`Checking sofa at ${item.position.toArray()} - Dist: ${dist}`);
-                            if (dist < minDist) {
-                                minDist = dist;
-                                nearest = item;
+                // 1. Raycast for Agents (High Priority)
+                raycasterRef.current.set(
+                    groupRef.current.position,
+                    groupRef.current.getWorldDirection(new THREE.Vector3())
+                );
+
+                // We need to raycast against Agent Meshes.
+                // AIManager has vehicles. We need their RenderComponents (Meshes).
+                // AIManager doesn't expose meshes easily.
+                // But we can iterate vehicles and check distance + angle (simpler/cheaper than raycast)
+
+                let bestAgent: { id: string; dist: number } | null = null;
+                const agents = aiManager.vehicles;
+                const myPos = groupRef.current.position;
+                const myDir = groupRef.current.getWorldDirection(new THREE.Vector3());
+
+                for (const agent of agents) {
+                    // Skip self (player isn't an invalid agent here, but ensure we don't target self if we were one)
+                    const agentPos = agent.position as unknown as THREE.Vector3;
+                    const dist = myPos.distanceTo(agentPos);
+
+                    if (dist < 5.0) { // 5m Range
+                        const toAgent = agentPos.clone().sub(myPos).normalize();
+                        const dot = myDir.dot(toAgent);
+
+                        if (dot > 0.5) { // Within ~60 degree cone
+                            // Found candidate
+                            if (!bestAgent || dist < bestAgent.dist) {
+                                // Extract ID (Assuming it's stored on the entity or mesh)
+                                // YUKA entities don't have userData by default. 
+                                // We rely on ClientBrain to have ID, but mapping back is hard.
+                                // For now, use a hack or assume ID is 'agent-01' if only one.
+                                // Let's try to get ID from RenderComponent.
+                                const mesh = (agent as any).renderComponent as THREE.Object3D;
+                                // Need to traverse up? Or check userData.
+                                // Assuming we passed ID somehow. 
+                                // Let's assume 'agent-01' for prototype if not found.
+                                const agentId = mesh?.userData?.id || 'agent-01'; // Defaulting
+
+                                bestAgent = { id: agentId, dist };
                             }
                         }
                     }
+                }
 
-                    if (nearest) {
-                        console.log("Found nearest sofa! Sitting...");
-                        setSitting(true);
-                        sitTargetPos.current = nearest.position.clone();
-                        sitTargetRot.current = nearest.rotation.clone();
-                    } else {
-                        console.log("No sofa near enough. Waving.");
-                        inputRef.current.wave = true;
-                        state.current.isWaving = true;
-                        state.current.waveTimer = 0;
+                if (bestAgent) {
+                    console.log("Interacting with Agent:", bestAgent.id);
+                    openInteraction(bestAgent.id);
+                    return;
+                }
+
+                // 2. Interactables (Sofa, etc.) - Fallback
+                let nearest = null;
+                let minDist = 3.0;
+
+                for (const item of interactables) {
+                    if (item.type === 'sofa') {
+                        const dist = groupRef.current.position.distanceTo(item.position);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            nearest = item;
+                        }
                     }
+                }
+
+                if (nearest) {
+                    setSitting(true);
+                    sitTargetPos.current = nearest.position.clone();
+                    sitTargetRot.current = nearest.rotation.clone();
+                } else {
+                    // NO WAVE. Just log.
+                    console.log("Nothing to interact with.");
                 }
             }
         };
 
         const handleKeyUp = (e: KeyboardEvent) => {
-            if (e.code === keyBindings.interact) {
-                inputRef.current.wave = false;
-            }
+            // No cleanup needed
         };
 
         window.addEventListener('keydown', handleKeyDown);
@@ -158,7 +212,8 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
             window.removeEventListener('keydown', handleKeyDown);
             window.removeEventListener('keyup', handleKeyUp);
         };
-    }, [interactables, isSitting, setSitting, groupRef, keyBindings]);
+    }, [interactables, isSitting, setSitting, groupRef, keyBindings, isOpen, openInteraction, closeInteraction]);
+
 
     useFrame((stateRoot, delta) => {
         if (!groupRef.current) return;
