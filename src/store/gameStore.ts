@@ -58,6 +58,27 @@ interface GameState {
         menu: string;
     };
     setKeyBinding: (action: string, key: string) => void;
+
+    // --- NEW SETTINGS ---
+    aiSettings: {
+        enabled: boolean;
+        llmEnabled: boolean;
+        allowedCommands: string[];
+    };
+    setAISetting: (settings: Partial<{ enabled: boolean; llmEnabled: boolean; allowedCommands: string[] }>) => void;
+
+    graphicsSettings: {
+        quality: 'low' | 'medium' | 'high';
+        shadows: boolean;
+        weather: boolean;
+    };
+    setGraphicsSetting: (settings: Partial<{ quality: 'low' | 'medium' | 'high'; shadows: boolean; weather: boolean }>) => void;
+
+    gameplaySettings: {
+        headBob: boolean;
+        sprintToggle: boolean;
+    };
+    setGameplaySetting: (settings: Partial<{ headBob: boolean; sprintToggle: boolean }>) => void;
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -114,5 +135,32 @@ export const useGameStore = create<GameState>((set) => ({
     },
     setKeyBinding: (action, key) => set((state) => ({
         keyBindings: { ...state.keyBindings, [action]: key }
+    })),
+
+    // --- NEW SETTINGS IMPLEMENTATION ---
+    aiSettings: {
+        enabled: true,
+        llmEnabled: true,
+        allowedCommands: ['FOLLOW_ENTITY', 'NAVIGATE_TO_ANCHOR', 'NAVIGATE_TO_COORD', 'SOCIAL_INTERACT', 'HOLD_POSITION', 'IDLE']
+    },
+    setAISetting: (newSettings) => set((state) => ({
+        aiSettings: { ...state.aiSettings, ...newSettings }
+    })),
+
+    graphicsSettings: {
+        quality: 'high',
+        shadows: true,
+        weather: true
+    },
+    setGraphicsSetting: (newSettings) => set((state) => ({
+        graphicsSettings: { ...state.graphicsSettings, ...newSettings }
+    })),
+
+    gameplaySettings: {
+        headBob: true,
+        sprintToggle: false
+    },
+    setGameplaySetting: (newSettings) => set((state) => ({
+        gameplaySettings: { ...state.gameplaySettings, ...newSettings }
     })),
 }));

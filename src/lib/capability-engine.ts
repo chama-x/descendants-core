@@ -37,12 +37,6 @@ const POSTURE_SPEEDS = {
     'ALERT': 4.5
 };
 
-const SOCIAL_DISTANCES = {
-    'INTERACT': 2.0,
-    'FOLLOW': 3.0,
-    'RESPECT': 1.5 // Personal space
-};
-
 // -----------------------------------------------------------------------------
 // CAPABILITY ENGINE (The Tactician)
 // -----------------------------------------------------------------------------
@@ -54,24 +48,24 @@ export class CapabilityEngine {
 
     // Behaviors
     private seekBehavior: YUKA.SeekBehavior;
-    private arriveBehavior: YUKA.SeekBehavior; // Fallback to Seek because of import error
+    private arriveBehavior: YUKA.SeekBehavior; // Reverted to Seek for Manual Logic
     private wanderBehavior: YUKA.WanderBehavior;
     private separationBehavior: YUKA.SeparationBehavior;
     private obstacleBehavior: YUKA.ObstacleAvoidanceBehavior;
 
     // State
     public currentAction: string = "IDLE";
-    private activeTarget: YUKA.Vector3 | null = null;
+    private activeTargetId: string | null = null; // Track who we are following
 
     constructor(vehicle: YUKA.Vehicle) {
         this.vehicle = vehicle;
         this.registry = WorldRegistry.getInstance();
 
-        // 1. Initialize Behaviors (Disabled by default)
+        // 1. Initialize Behaviors
         this.seekBehavior = new YUKA.SeekBehavior(new YUKA.Vector3());
         this.seekBehavior.active = false;
 
-        // Using SeekBehavior instead of ArriveBehavior due to TS issues
+        // "ArriveBehavior" implemented via Seek with dynamic braking
         this.arriveBehavior = new YUKA.SeekBehavior(new YUKA.Vector3());
         this.arriveBehavior.active = false;
 
@@ -82,8 +76,9 @@ export class CapabilityEngine {
         this.separationBehavior = new YUKA.SeparationBehavior(AIManager.getInstance().vehicles);
         this.separationBehavior.weight = 3.0; // High respect for personal space
 
-        // Always avoid obstacles
-        this.obstacleBehavior = new YUKA.ObstacleAvoidanceBehavior([]);
+        // Always avoid obstacles (Walls, Furniture)
+        const obstacles = AIManager.getInstance().getObstacles();
+        this.obstacleBehavior = new YUKA.ObstacleAvoidanceBehavior(obstacles);
         this.obstacleBehavior.weight = 5.0;
 
         // Add to Steering
@@ -95,12 +90,49 @@ export class CapabilityEngine {
     }
 
     /**
+     * Update Loop - Called every frame by useYukaAI
+     * Crucial for tracking moving targets (Player) & Manual Arrival Logic
+     */
+    public update(delta: number) {
+        // If we are following/interacting, update the target position
+        if (this.activeTargetId && (this.currentAction === 'FOLLOW_ENTITY' || this.currentAction === 'SOCIAL_INTERACT')) {
+            const currentPos = this.registry.getPosition(this.activeTargetId);
+            if (currentPos) {
+                // Update target
+                const targetVec = currentPos as unknown as YUKA.Vector3;
+                this.arriveBehavior.target.copy(targetVec);
+
+                // Manual Arrival Logic (Smooth Stop)
+                // SeekBehavior doesn't stop. We must throttle speed.
+                // Distance check is against current vehicle position.
+                const dist = this.vehicle.position.distanceTo(targetVec);
+                const stopRad = this.currentAction === 'SOCIAL_INTERACT' ? 2.0 : 2.5; // Stop distance
+                const slowRad = stopRad + 5.0; // Where to start slowing down
+
+                if (dist < stopRad) {
+                    // STOP
+                    this.vehicle.maxSpeed = 0;
+                    this.vehicle.velocity.set(0, 0, 0); // Hard stop to prevent jitter
+                } else if (dist < slowRad) {
+                    // SLOW DOWN
+                    const factor = (dist - stopRad) / (slowRad - stopRad); // 0.0 to 1.0
+                    this.vehicle.maxSpeed = Math.max(0.5, POSTURE_SPEEDS[this.currentPosture] * factor);
+                } else {
+                    // FULL SPEED
+                    this.vehicle.maxSpeed = POSTURE_SPEEDS[this.currentPosture];
+                }
+            }
+        }
+    }
+
+    /**
      * The Main Interface. LLM sends a command, Engine executes.
      */
     public execute(cmd: CapabilityCommand): void {
-        console.log(`[CapabilityEngine] Executing: ${cmd.type} (${cmd.posture || 'KEEP'})`);
+        console.log(`[CapabilityEngine] Executing: ${cmd.type}`);
 
         this.currentAction = cmd.type;
+        this.activeTargetId = null; // Reset target default
 
         // 1. Apply Posture (Global Modifier)
         if (cmd.posture) {
@@ -109,6 +141,9 @@ export class CapabilityEngine {
 
         // 2. Reset Active Behaviors
         this.resetTacticalBehaviors();
+
+        // Reset Speed on new command (unless update loop overrides it)
+        this.vehicle.maxSpeed = POSTURE_SPEEDS[this.currentPosture];
 
         // 3. Execute Capability Logic
         switch (cmd.type) {
@@ -122,9 +157,11 @@ export class CapabilityEngine {
                 this.executeNavigateToCoord(cmd.params?.x, cmd.params?.y, cmd.params?.z);
                 break;
             case 'FOLLOW_ENTITY':
+                this.activeTargetId = cmd.params?.target;
                 this.executeFollow(cmd.params?.target);
                 break;
             case 'SOCIAL_INTERACT':
+                this.activeTargetId = cmd.params?.target;
                 this.executeSocialInteract(cmd.params?.target);
                 break;
             case 'HOLD_POSITION':
@@ -176,6 +213,7 @@ export class CapabilityEngine {
     }
 
     private executeFollow(targetName: string) {
+        // Initial setup
         const pos = this.registry.getPosition(targetName);
         if (pos) {
             this.arriveBehavior.target.copy(pos as unknown as YUKA.Vector3);

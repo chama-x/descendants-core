@@ -18,6 +18,7 @@ export function useYukaAI(
     const aiManager = AIManager.getInstance();
     const obstacles = useGameStore((state) => state.obstacles);
     const collidableMeshes = useGameStore((state) => state.collidableMeshes);
+    const aiSettings = useGameStore((state) => state.aiSettings);
 
     // Engine & Brain
     const capabilityEngineRef = useRef<CapabilityEngine | null>(null);
@@ -79,7 +80,7 @@ export function useYukaAI(
         frameRef.current++;
 
         // --- BRAIN UPDATE (The Strategist) ---
-        if (frameRef.current % brainIntervalRef.current === 0) {
+        if (aiSettings.enabled && frameRef.current % brainIntervalRef.current === 0) {
             // Construct Perception
             const nearbyEntities: NearbyEntity[] = [];
             if (playerRef.current) {
@@ -95,16 +96,26 @@ export function useYukaAI(
             brainRef.current.update(
                 vehicle.position as unknown as THREE.Vector3,
                 nearbyEntities,
-                engine.currentAction // Pass current capability as 'Behavior'
+                engine.currentAction, // Pass current capability as 'Behavior'
+                aiSettings.allowedCommands,
+                aiSettings.llmEnabled
             ).then(command => {
                 if (command) {
                     // Send Order to Tactician
                     engine.execute(command);
                 }
             });
+        } else if (!aiSettings.enabled) {
+            // Force Idle if disabled
+            if (engine.currentAction !== 'IDLE') {
+                engine.execute({ type: 'IDLE', posture: 'WALK' });
+            }
         }
 
         // --- PHYSICS & ANIMATION ---
+
+        // Update Tactical Engine (e.g. tracking moving targets)
+        engine.update(dt);
 
         // 1. Ground Clamping (Simplified)
         if (collidableMeshes.length > 0 && frameRef.current % 2 === 0) {

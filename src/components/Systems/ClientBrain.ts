@@ -35,11 +35,19 @@ export class ClientBrain {
     public async update(
         position: THREE.Vector3,
         nearbyEntities: NearbyEntity[],
-        currentBehavior: string
+        currentBehavior: string,
+        allowedCommands: string[] = [],
+        llmEnabled: boolean = true
     ): Promise<CapabilityCommand | null> {
 
         // Rate Limiting Check
         if (this.state.isThinking || !this.rateLimiter.tryConsume()) {
+            return null;
+        }
+
+        // 1. Check LLM Toggle
+        if (!llmEnabled) {
+            // Brain is "off" for high-level thought, return basic keep-alive or null
             return null;
         }
 
@@ -99,6 +107,13 @@ export class ClientBrain {
 
             this.state.lastThoughtTime = Date.now();
             this.state.isThinking = false;
+
+            // 2. Filter Command
+            if (command && allowedCommands.length > 0 && !allowedCommands.includes(command.type)) {
+                console.log(`[ClientBrain] Command filtered by settings: ${command.type}`);
+                return { type: 'IDLE', posture: 'WALK' };
+            }
+
             return command;
 
         } catch (e) {

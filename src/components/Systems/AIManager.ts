@@ -62,6 +62,10 @@ class AIManager {
         this.obstacles.push(obstacle);
         return obstacle;
     }
+
+    public getObstacles(): YUKA.GameEntity[] {
+        return this.obstacles;
+    }
 }
 
 export default AIManager;
