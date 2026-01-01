@@ -1,41 +1,131 @@
 /* eslint-disable react-hooks/immutability */
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, useState, useEffect } from 'react';
 import * as THREE from 'three';
+import { Html } from '@react-three/drei';
 import { useYukaAI } from './useYukaAI';
 import { createMaterials } from '../Systems/Materials';
 import { Joints } from './useRobotController';
+import { getActiveModel } from '@/lib/groq';
 
 export default function AIRobot({
     playerRef,
-    initialPosition = [10, 5, -330]
+    initialPosition = [10, 5, -330],
+    agentId = 'agent-01'
 }: {
     playerRef: React.RefObject<THREE.Group | null>,
-    initialPosition?: [number, number, number]
+    initialPosition?: [number, number, number],
+    agentId?: string
 }) {
     const groupRef = useRef<THREE.Group>(null);
-    // We need to access joints for animation. 
-    // Ideally useYukaAI should return joints or we separate animation logic.
-    // For now, let's keep the visual structure but we need to re-bind joints.
     const joints = useRef<any>({});
-    // Use the new Yuka-powered brain with animation support
-    const { vehicle } = useYukaAI(groupRef, playerRef, joints);
+    const { vehicle, brain } = useYukaAI(groupRef, playerRef, joints);
 
-    // ... (Rest of the component needs to be updated to handle animation if useYukaAI doesn't return joints)
-    // Wait, useYukaAI currently returns { vehicle }. It doesn't handle animation yet.
-    // We should probably port the animation logic to useYukaAI or a separate useRobotAnimation hook.
-    // For this step, let's just swap the controller and see if it moves.
-    // We will lose animations temporarily (he will slide), which is expected for Phase 1.
+    // HUD State (for reactive updates)
+    const [hudState, setHudState] = useState({
+        thought: 'Initializing...',
+        isThinking: false,
+        model: 'Loading...'
+    });
 
+    // Sync brain state to HUD every 500ms
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (brain) {
+                setHudState({
+                    thought: brain.state.thought,
+                    isThinking: brain.state.isThinking,
+                    model: getActiveModel().split('/').pop() || 'Unknown'
+                });
+            }
+        }, 500);
+        return () => clearInterval(interval);
+    }, [brain]);
 
     const { bodyMat, jointMat, glowMat } = useMemo(() => {
         const mats = createMaterials();
-        // Override glow to RED for AI
         const redGlow = new THREE.MeshBasicMaterial({ color: 0xff0000, toneMapped: false });
         return { bodyMat: mats.robotBody, jointMat: mats.robotJoint, glowMat: redGlow };
     }, []);
 
     return (
         <group ref={groupRef} position={initialPosition}>
+            {/* Floating HUD above head */}
+            <Html
+                position={[0, 8, 0]}
+                center
+                distanceFactor={15}
+                occlude
+                style={{
+                    pointerEvents: 'none',
+                    userSelect: 'none',
+                }}
+            >
+                <div style={{
+                    background: 'rgba(0, 0, 0, 0.85)',
+                    color: '#fff',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    fontFamily: 'monospace',
+                    fontSize: '11px',
+                    minWidth: '180px',
+                    maxWidth: '250px',
+                    border: hudState.isThinking ? '2px solid #00ff88' : '1px solid #444',
+                    boxShadow: hudState.isThinking ? '0 0 10px #00ff88' : 'none',
+                    transition: 'all 0.3s ease'
+                }}>
+                    {/* Model Badge */}
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '6px',
+                        paddingBottom: '4px',
+                        borderBottom: '1px solid #333'
+                    }}>
+                        <span style={{ color: '#888', fontSize: '9px' }}>{agentId}</span>
+                        <span style={{
+                            background: '#1a1a2e',
+                            color: '#00d4ff',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontSize: '9px',
+                            fontWeight: 'bold'
+                        }}>
+                            {hudState.model}
+                        </span>
+                    </div>
+
+                    {/* Status */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        marginBottom: '4px'
+                    }}>
+                        <span style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            background: hudState.isThinking ? '#00ff88' : '#666',
+                            animation: hudState.isThinking ? 'pulse 1s infinite' : 'none'
+                        }} />
+                        <span style={{ color: hudState.isThinking ? '#00ff88' : '#888', fontSize: '10px' }}>
+                            {hudState.isThinking ? 'Thinking...' : 'Idle'}
+                        </span>
+                    </div>
+
+                    {/* Thought */}
+                    <div style={{
+                        color: '#ddd',
+                        fontSize: '10px',
+                        lineHeight: '1.3',
+                        wordBreak: 'break-word'
+                    }}>
+                        "{hudState.thought.length > 80 ? hudState.thought.substring(0, 77) + '...' : hudState.thought}"
+                    </div>
+                </div>
+            </Html>
+
             <group ref={(el) => { if (el && joints.current) joints.current.hips = el; }} position={[0, 3.5, 0]}>
                 <mesh material={bodyMat} castShadow receiveShadow>
                     <boxGeometry args={[1.5, 0.5, 1]} />
