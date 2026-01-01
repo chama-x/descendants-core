@@ -115,7 +115,8 @@ export function useYukaAI(
         // --- PHYSICS & ANIMATION ---
 
         // Update Tactical Engine (e.g. tracking moving targets)
-        engine.update(dt);
+        const playerPos = playerRef.current ? playerRef.current.position : undefined;
+        engine.update(dt, playerPos);
 
         // 1. Ground Clamping (Simplified)
         if (collidableMeshes.length > 0 && frameRef.current % 2 === 0) {
@@ -143,32 +144,51 @@ export function useYukaAI(
 // --- PROCEDURAL ANIMATION (Moved out for clarity) ---
 function animateProcedural(vehicle: YUKA.Vehicle, joints: React.MutableRefObject<any>, walkTime: React.MutableRefObject<number>, dt: number) {
     const speed = vehicle.velocity.length();
-    const isRunning = speed > 6.0;
     const j = joints.current;
+    const lerpFactor = 0.1; // For smoothing transitions
 
     if (!j.hips) return;
 
     if (speed > 0.1) {
-        walkTime.current += dt * (isRunning ? 15 : 10);
-        const w = walkTime.current;
+        // --- MOVING ---
+        const isRunning = speed > 10.0;
+        walkTime.current += dt * (isRunning ? 15.0 : 10.0); // Tuned for 6.0 Walk / 12.0 Run
+
         const legAmp = isRunning ? 0.8 : 0.6;
+        const kneeAmp = isRunning ? 0.5 : 0.3;
 
-        j.leftHip.rotation.x = Math.sin(w) * legAmp;
-        j.rightHip.rotation.x = Math.sin(w + Math.PI) * legAmp;
-        j.leftArm.shoulder.rotation.x = Math.sin(w + Math.PI) * legAmp;
-        j.rightArm.shoulder.rotation.x = Math.sin(w) * legAmp;
+        // Hips Bob
+        j.hips.position.y = THREE.MathUtils.lerp(j.hips.position.y, 3.5 + Math.sin(walkTime.current * 2) * (isRunning ? 0.2 : 0.1), lerpFactor);
 
-        // Bobbing
-        j.hips.position.y = THREE.MathUtils.lerp(j.hips.position.y, 3.5 + Math.sin(w * 2) * 0.1, 0.1);
+        // Legs
+        j.leftHip.rotation.x = Math.sin(walkTime.current) * legAmp;
+        j.leftKnee.rotation.x = Math.abs(Math.cos(walkTime.current)) * kneeAmp + 0.2;
+
+        j.rightHip.rotation.x = Math.sin(walkTime.current + Math.PI) * legAmp;
+        j.rightKnee.rotation.x = Math.abs(Math.cos(walkTime.current + Math.PI)) * kneeAmp + 0.2;
+
+        // Arms
+        j.leftArm.shoulder.rotation.x = Math.sin(walkTime.current + Math.PI) * legAmp;
+        j.rightArm.shoulder.rotation.x = Math.sin(walkTime.current) * legAmp;
+
+        // Lean into run
+        j.torso.rotation.x = THREE.MathUtils.lerp(j.torso.rotation.x, isRunning ? 0.3 : 0.1, lerpFactor);
+        j.neck.rotation.y = THREE.MathUtils.lerp(j.neck.rotation.y, 0, lerpFactor);
+
     } else {
         // Idle
         walkTime.current += dt;
-        j.hips.position.y = THREE.MathUtils.lerp(j.hips.position.y, 3.5 + Math.sin(walkTime.current) * 0.05, 0.1);
+        j.hips.position.y = THREE.MathUtils.lerp(j.hips.position.y, 3.5 + Math.sin(walkTime.current) * 0.05, lerpFactor);
 
         // Reset limbs
-        j.leftHip.rotation.x = THREE.MathUtils.lerp(j.leftHip.rotation.x, 0, 0.1);
-        j.rightHip.rotation.x = THREE.MathUtils.lerp(j.rightHip.rotation.x, 0, 0.1);
-        j.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.x, 0, 0.1);
-        j.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.x, 0, 0.1);
+        j.leftHip.rotation.x = THREE.MathUtils.lerp(j.leftHip.rotation.x, 0, lerpFactor);
+        j.rightHip.rotation.x = THREE.MathUtils.lerp(j.rightHip.rotation.x, 0, lerpFactor);
+        j.leftKnee.rotation.x = THREE.MathUtils.lerp(j.leftKnee.rotation.x, 0, lerpFactor);
+        j.rightKnee.rotation.x = THREE.MathUtils.lerp(j.rightKnee.rotation.x, 0, lerpFactor);
+        j.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.x, 0, lerpFactor);
+        j.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.x, 0, lerpFactor);
+        j.torso.rotation.x = THREE.MathUtils.lerp(j.torso.rotation.x, 0, lerpFactor);
+        j.neck.rotation.y = THREE.MathUtils.lerp(j.neck.rotation.y, 0, lerpFactor);
     }
 }
+

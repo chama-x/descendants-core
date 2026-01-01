@@ -54,6 +54,7 @@ interface GameState {
         right: string;
         jump: string;
         sprint: string;
+        crouch: string;
         interact: string;
         menu: string;
     };
@@ -130,6 +131,7 @@ export const useGameStore = create<GameState>((set) => ({
         right: 'KeyD',
         jump: 'Space',
         sprint: 'ShiftLeft',
+        crouch: 'KeyC',
         interact: 'KeyE',
         menu: 'Escape'
     },

@@ -30,12 +30,11 @@ export interface CapabilityCommand {
 // CONSTANTS (Social Physics)
 // -----------------------------------------------------------------------------
 
-const POSTURE_SPEEDS = {
-    'RUN': 10.0,
-    'WALK': 3.5,
-    'SNEAK': 2.0,
-    'ALERT': 4.5
-};
+// -----------------------------------------------------------------------------
+// CONSTANTS (Social Physics)
+// -----------------------------------------------------------------------------
+
+// (Moved inside class)
 
 // -----------------------------------------------------------------------------
 // CAPABILITY ENGINE (The Tactician)
@@ -48,14 +47,29 @@ export class CapabilityEngine {
 
     // Behaviors
     private seekBehavior: YUKA.SeekBehavior;
-    private arriveBehavior: YUKA.SeekBehavior; // Reverted to Seek for Manual Logic
+    private arriveBehavior: any; // Workaround: Types missing for ArriveBehavior
     private wanderBehavior: YUKA.WanderBehavior;
     private separationBehavior: YUKA.SeparationBehavior;
     private obstacleBehavior: YUKA.ObstacleAvoidanceBehavior;
 
     // State
     public currentAction: string = "IDLE";
-    private activeTargetId: string | null = null; // Track who we are following
+    public currentCommand: CapabilityCommand | null = null;
+    private activeTargetId: string | null = null;
+
+    // Hysteresis State (The "Calm" Factor)
+    private isResting: boolean = false;
+    private readonly STOP_THRESHOLD = 2.0;    // Distance to stop
+    private readonly RESUME_THRESHOLD = 3.5;  // Distance to resume (Dead zone)
+
+    // Unified Speeds with Player
+    private POSTURE_SPEEDS = {
+        'IDLE': 0,
+        'WALK': 6.0,    // Matched to Player Jog
+        'RUN': 12.0,    // Matched to Player Sprint
+        'SNEAK': 2.5,
+        'ALERT': 4.5
+    };
 
     constructor(vehicle: YUKA.Vehicle) {
         this.vehicle = vehicle;
@@ -65,18 +79,22 @@ export class CapabilityEngine {
         this.seekBehavior = new YUKA.SeekBehavior(new YUKA.Vector3());
         this.seekBehavior.active = false;
 
-        // "ArriveBehavior" implemented via Seek with dynamic braking
-        this.arriveBehavior = new YUKA.SeekBehavior(new YUKA.Vector3());
+        // Use Proper ArriveBehavior for smooth deceleration
+        // decelaration: 3 (Slow) to 1 (Fast). 2.5 is a good organic balance.
+        // tolerance: 0.5 (How close to get before "success")
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ArriveBehavior = (YUKA as any).ArriveBehavior;
+        this.arriveBehavior = new ArriveBehavior(new YUKA.Vector3(), 2.5, 0.5);
         this.arriveBehavior.active = false;
 
         this.wanderBehavior = new YUKA.WanderBehavior();
         this.wanderBehavior.active = false;
 
-        // Always maintain separation
+        // Dynamic Separation
         this.separationBehavior = new YUKA.SeparationBehavior(AIManager.getInstance().vehicles);
-        this.separationBehavior.weight = 3.0; // High respect for personal space
+        this.separationBehavior.weight = 3.0;
 
-        // Always avoid obstacles (Walls, Furniture)
+        // Obstacle Avoidance (Walls/Furniture)
         const obstacles = AIManager.getInstance().getObstacles();
         this.obstacleBehavior = new YUKA.ObstacleAvoidanceBehavior(obstacles);
         this.obstacleBehavior.weight = 5.0;
@@ -87,39 +105,90 @@ export class CapabilityEngine {
         this.vehicle.steering.add(this.wanderBehavior);
         this.vehicle.steering.add(this.separationBehavior);
         this.vehicle.steering.add(this.obstacleBehavior);
+
+        // Set initial max speed
+        this.vehicle.maxSpeed = this.POSTURE_SPEEDS['WALK'];
     }
 
     /**
      * Update Loop - Called every frame by useYukaAI
-     * Crucial for tracking moving targets (Player) & Manual Arrival Logic
+     * Handles target tracking and Hysteresis logic
      */
-    public update(delta: number) {
+    public update(delta: number, playerPos?: THREE.Vector3) {
         // If we are following/interacting, update the target position
-        if (this.activeTargetId && (this.currentAction === 'FOLLOW_ENTITY' || this.currentAction === 'SOCIAL_INTERACT')) {
-            const currentPos = this.registry.getPosition(this.activeTargetId);
-            if (currentPos) {
-                // Update target
-                const targetVec = currentPos as unknown as YUKA.Vector3;
+        if (this.currentCommand && this.currentCommand.type === 'FOLLOW_ENTITY' && playerPos) {
+            // 1. Auto-Run Logic (Match Player Speed)
+            // We need to know player speed. Since we only have position, we can infer or pass it.
+            // For now, let's assume if player is > 10m away, we should RUN.
+            // OR checks WorldRegistry if available.
+            // Better heuristic: Distance based.
+            const dist = this.vehicle.position.distanceTo(playerPos);
+
+            if (dist > 15.0) {
+                this.currentPosture = 'RUN';
+            } else if (dist < 10.0) {
+                this.currentPosture = 'WALK';
+            }
+
+            // Update Max Speed
+            this.vehicle.maxSpeed = this.POSTURE_SPEEDS[this.currentPosture];
+
+            // 2. Stop/Go Hysteresis
+            const targetVec = playerPos.clone();
+            // Don't stand INSIDE the player. Stop a bit short.
+            // We actually rely on ArriveBehavior's tolerance, but let's effectively
+            // managing "Active" state to stop the internal engine calculation when close.
+
+            if (this.isResting) {
+                if (dist > this.RESUME_THRESHOLD) {
+                    this.isResting = false; // WAKE UP
+                    this.arriveBehavior.target.copy(targetVec);
+                    this.arriveBehavior.active = true;
+                } else {
+                    // Stay resting, keep braking
+                    this.arriveBehavior.active = false;
+                    this.vehicle.velocity.set(0, 0, 0);
+                }
+            } else {
+                // We are moving. Check if we should stop.
                 this.arriveBehavior.target.copy(targetVec);
 
-                // Manual Arrival Logic (Smooth Stop)
-                // SeekBehavior doesn't stop. We must throttle speed.
-                // Distance check is against current vehicle position.
-                const dist = this.vehicle.position.distanceTo(targetVec);
-                const stopRad = this.currentAction === 'SOCIAL_INTERACT' ? 2.0 : 2.5; // Stop distance
-                const slowRad = stopRad + 5.0; // Where to start slowing down
+                if (dist < this.STOP_THRESHOLD) {
+                    this.isResting = true; // STOP
+                    this.arriveBehavior.active = false;
+                    this.vehicle.velocity.set(0, 0, 0);
+                }
+            }
+        } else if (this.activeTargetId && (this.currentAction === 'SOCIAL_INTERACT')) {
+            const currentPos = this.registry.getPosition(this.activeTargetId);
 
-                if (dist < stopRad) {
-                    // STOP
-                    this.vehicle.maxSpeed = 0;
-                    this.vehicle.velocity.set(0, 0, 0); // Hard stop to prevent jitter
-                } else if (dist < slowRad) {
-                    // SLOW DOWN
-                    const factor = (dist - stopRad) / (slowRad - stopRad); // 0.0 to 1.0
-                    this.vehicle.maxSpeed = Math.max(0.5, POSTURE_SPEEDS[this.currentPosture] * factor);
+            if (currentPos) {
+                const targetVec = currentPos as unknown as YUKA.Vector3;
+                const dist = this.vehicle.position.distanceTo(targetVec);
+
+                // --- AAA HYSTERESIS LOOP ---
+
+                if (this.isResting) {
+                    // We are resting. Do NOT move until target is far enough.
+                    if (dist > this.RESUME_THRESHOLD) {
+                        this.isResting = false; // WAKE UP
+                        this.arriveBehavior.target.copy(targetVec);
+                        this.arriveBehavior.active = true;
+                        this.vehicle.maxSpeed = this.POSTURE_SPEEDS[this.currentPosture];
+                    } else {
+                        // Stay resting, keep braking
+                        this.arriveBehavior.active = false;
+                        this.vehicle.velocity.set(0, 0, 0);
+                    }
                 } else {
-                    // FULL SPEED
-                    this.vehicle.maxSpeed = POSTURE_SPEEDS[this.currentPosture];
+                    // We are moving. Check if we should stop.
+                    this.arriveBehavior.target.copy(targetVec);
+
+                    if (dist < this.STOP_THRESHOLD) {
+                        this.isResting = true; // STOP
+                        this.arriveBehavior.active = false;
+                        this.vehicle.velocity.set(0, 0, 0);
+                    }
                 }
             }
         }
@@ -132,7 +201,9 @@ export class CapabilityEngine {
         console.log(`[CapabilityEngine] Executing: ${cmd.type}`);
 
         this.currentAction = cmd.type;
+        this.currentCommand = cmd; // Store command for update loop
         this.activeTargetId = null; // Reset target default
+        this.isResting = false; // Always wake up on new command
 
         // 1. Apply Posture (Global Modifier)
         if (cmd.posture) {
@@ -142,8 +213,8 @@ export class CapabilityEngine {
         // 2. Reset Active Behaviors
         this.resetTacticalBehaviors();
 
-        // Reset Speed on new command (unless update loop overrides it)
-        this.vehicle.maxSpeed = POSTURE_SPEEDS[this.currentPosture];
+        // Reset Speed on new command
+        this.vehicle.maxSpeed = this.POSTURE_SPEEDS[this.currentPosture];
 
         // 3. Execute Capability Logic
         switch (cmd.type) {
@@ -165,11 +236,9 @@ export class CapabilityEngine {
                 this.executeSocialInteract(cmd.params?.target);
                 break;
             case 'HOLD_POSITION':
-                // Stop moving, keep looking
                 this.vehicle.velocity.set(0, 0, 0);
                 break;
             case 'INTERNAL_THOUGHT':
-                // No physical action
                 break;
             default:
                 console.warn(`[CapabilityEngine] Unknown capability: ${cmd.type}`);
@@ -180,7 +249,6 @@ export class CapabilityEngine {
 
     private setPosture(posture: Posture) {
         this.currentPosture = posture;
-        this.vehicle.maxSpeed = POSTURE_SPEEDS[posture];
     }
 
     private resetTacticalBehaviors() {
@@ -201,8 +269,6 @@ export class CapabilityEngine {
         if (pos) {
             this.arriveBehavior.target.copy(pos as unknown as YUKA.Vector3);
             this.arriveBehavior.active = true;
-        } else {
-            console.warn(`[CapabilityEngine] Unknown anchor: ${targetName}`);
         }
     }
 
@@ -213,7 +279,6 @@ export class CapabilityEngine {
     }
 
     private executeFollow(targetName: string) {
-        // Initial setup
         const pos = this.registry.getPosition(targetName);
         if (pos) {
             this.arriveBehavior.target.copy(pos as unknown as YUKA.Vector3);
@@ -224,6 +289,8 @@ export class CapabilityEngine {
     private executeSocialInteract(targetName: string) {
         const pos = this.registry.getPosition(targetName);
         if (pos) {
+            // Social interaction needs to be closer, maybe change thresholds?
+            // For now, use same follow logic but maybe we update thresholds dynamicly
             this.arriveBehavior.target.copy(pos as unknown as YUKA.Vector3);
             this.arriveBehavior.active = true;
         }

@@ -34,14 +34,14 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
         }
     }, [groupRef]);
 
-    const inputRef = useRef({ f: false, b: false, l: false, r: false, jump: false, sneak: false, wave: false });
+    const inputRef = useRef({ f: false, b: false, l: false, r: false, jump: false, sprint: false, crouch: false, wave: false });
     const state = useRef({
         isWaving: false,
         waveTimer: 0,
         velocity: new THREE.Vector3(),
         isGrounded: false,
         walkTime: 0,
-        isSneaking: false,
+        posture: 'WALK', // 'WALK' | 'RUN' | 'CROUCH'
         idleTime: 0
     });
 
@@ -56,15 +56,8 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
                 case keyBindings.left: inputRef.current.l = true; break;
                 case keyBindings.right: inputRef.current.r = true; break;
                 case keyBindings.jump: inputRef.current.jump = true; break;
-                case keyBindings.sprint: inputRef.current.sneak = true; break; // Sprint maps to 'sneak' internally for now? Or vice versa? 
-                // Note: Original code mapped Shift to 'sneak'. If user wants 'Sprint', we should clarify. 
-                // Assuming 'sneak' in state is actually used for sprinting based on speed constants (12 vs 5). 
-                // Wait, walkSpeed=12, sneakSpeed=5. So Shift makes you SLOWER? 
-                // "case 'ShiftLeft': case 'ShiftRight': inputRef.current.sneak = true; break;"
-                // And "const currentSpeed = s.isSneaking ? sneakSpeed : walkSpeed;"
-                // So holding Shift makes you sneak (slower). 
-                // The prompt asked for "Sprint", but the code implements Sneak. 
-                // I will map 'sprint' binding to 'sneak' input for now to preserve behavior, but label it as 'Sneak' in UI if possible, or just keep it as is.
+                case keyBindings.sprint: inputRef.current.sprint = true; break;
+                case keyBindings.crouch: inputRef.current.crouch = true; break;
             }
         };
         const onKeyUp = (e: KeyboardEvent) => {
@@ -74,7 +67,8 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
                 case keyBindings.left: inputRef.current.l = false; break;
                 case keyBindings.right: inputRef.current.r = false; break;
                 case keyBindings.jump: inputRef.current.jump = false; break;
-                case keyBindings.sprint: inputRef.current.sneak = false; break;
+                case keyBindings.sprint: inputRef.current.sprint = false; break;
+                case keyBindings.crouch: inputRef.current.crouch = false; break;
             }
         };
         window.addEventListener('keydown', onKeyDown);
@@ -85,15 +79,16 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
         };
     }, [keyBindings]);
 
-    // Physics Constants
-    const walkSpeed = 12.0;
-    const sneakSpeed = 5.0;
+    // Unified Physics Constants (Matching Agent Logic)
+    const WALK_SPEED = 6.0;
+    const RUN_SPEED = 12.0;
+    const CROUCH_SPEED = 2.5;
+
     const jumpForce = 20.0;
     const gravity = -50.0;
     const radius = 0.8;
 
     const joints = useRef<Joints>({});
-    const rb = useRef<any>(null);
 
     // Interaction
     const { openInteraction, isOpen, closeInteraction } = useInteractionStore();
@@ -141,18 +136,12 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
                     groupRef.current.getWorldDirection(new THREE.Vector3())
                 );
 
-                // We need to raycast against Agent Meshes.
-                // AIManager has vehicles. We need their RenderComponents (Meshes).
-                // AIManager doesn't expose meshes easily.
-                // But we can iterate vehicles and check distance + angle (simpler/cheaper than raycast)
-
                 let bestAgent: { id: string; dist: number } | null = null;
                 const agents = aiManager.vehicles;
                 const myPos = groupRef.current.position;
                 const myDir = groupRef.current.getWorldDirection(new THREE.Vector3());
 
                 for (const agent of agents) {
-                    // Skip self (player isn't an invalid agent here, but ensure we don't target self if we were one)
                     const agentPos = agent.position as unknown as THREE.Vector3;
                     const dist = myPos.distanceTo(agentPos);
 
@@ -161,21 +150,10 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
                         const dot = myDir.dot(toAgent);
 
                         if (dot > 0.5) { // Within ~60 degree cone
-                            // Found candidate
-                            if (!bestAgent || dist < bestAgent.dist) {
-                                // Extract ID (Assuming it's stored on the entity or mesh)
-                                // YUKA entities don't have userData by default. 
-                                // We rely on ClientBrain to have ID, but mapping back is hard.
-                                // For now, use a hack or assume ID is 'agent-01' if only one.
-                                // Let's try to get ID from RenderComponent.
-                                const mesh = (agent as any).renderComponent as THREE.Object3D;
-                                // Need to traverse up? Or check userData.
-                                // Assuming we passed ID somehow. 
-                                // Let's assume 'agent-01' for prototype if not found.
-                                const agentId = mesh?.userData?.id || 'agent-01'; // Defaulting
-
-                                bestAgent = { id: agentId, dist };
-                            }
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            const mesh = (agent as any).renderComponent as THREE.Object3D;
+                            const agentId = mesh?.userData?.id || 'agent-01';
+                            bestAgent = { id: agentId, dist };
                         }
                     }
                 }
@@ -205,15 +183,12 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
                     sitTargetPos.current = nearest.position.clone();
                     sitTargetRot.current = nearest.rotation.clone();
                 } else {
-                    // NO WAVE. Just log.
                     console.log("Nothing to interact with.");
                 }
             }
         };
 
-        const handleKeyUp = (e: KeyboardEvent) => {
-            // No cleanup needed
-        };
+        const handleKeyUp = (e: KeyboardEvent) => { };
 
         window.addEventListener('keydown', handleKeyDown);
         window.addEventListener('keyup', handleKeyUp);
@@ -248,18 +223,29 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
         const dt = Math.min(delta, 0.1);
 
         // Input Processing
-        // Block movement if Interaction UI is open
         if (isOpen) {
             input.f = false;
             input.b = false;
             input.l = false;
             input.r = false;
             input.jump = false;
-            input.sneak = false;
+            input.sprint = false;
+            input.crouch = false;
         }
 
-        s.isSneaking = input.sneak;
-        const currentSpeed = s.isSneaking ? sneakSpeed : walkSpeed;
+        // --- UNIFIED SPEED LOGIC ---
+        let currentSpeed = WALK_SPEED;
+        let posture = 'WALK';
+
+        if (input.crouch) {
+            currentSpeed = CROUCH_SPEED;
+            posture = 'CROUCH';
+        } else if (input.sprint) {
+            currentSpeed = RUN_SPEED;
+            posture = 'RUN';
+        }
+
+        s.posture = posture; // Store for animation
         const moveDist = currentSpeed * dt;
 
         let inputZ = 0;
@@ -293,26 +279,21 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
         const worldDx = moveDir.x * moveDist;
         const worldDz = moveDir.z * moveDist;
 
-        const isMoving = (inputX !== 0 || inputZ !== 0) && !isOpen; // Ensure isMoving is false if open
+        const isMoving = (inputX !== 0 || inputZ !== 0) && !isOpen;
 
         if (isSitting && sitTargetPos.current && sitTargetRot.current) {
-            // Smoothly move to sit target
             groupRef.current.position.lerp(sitTargetPos.current, 0.1);
             groupRef.current.quaternion.slerp(sitTargetRot.current, 0.1);
             s.velocity.set(0, 0, 0);
         } else {
-            // Enforce upright orientation (Fix for "messed up controls" after sitting)
-            // If the robot was tilted by the sit animation (via quaternion), we must reset X/Z rotation.
             mesh.rotation.x = 0;
             mesh.rotation.z = 0;
 
-            // Actions
             if (input.wave && !s.isWaving) {
                 s.isWaving = true;
                 s.waveTimer = 0;
             }
 
-            // Rotation
             if (isMoving) {
                 const targetAngle = Math.atan2(moveDir.x, moveDir.z);
                 let diff = targetAngle - mesh.rotation.y;
@@ -373,62 +354,45 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
 
         // --- Animation Logic ---
         const j = joints.current;
-        // Check if joints are populated
         if (!j.hips || !j.torso || !j.leftArm || !j.rightArm || !j.leftHip || !j.rightHip || !j.leftKnee || !j.rightKnee || !j.neck) {
-            // console.warn("Joints not ready");
             return;
         }
 
-        const sneakHipHeight = 2.8;
+        const isCrouching = s.posture === 'CROUCH';
+        const isRunning = s.posture === 'RUN';
+
+        // Posture Heights
+        const crouchHipHeight = 2.8;
         const standHipHeight = 3.5;
-        const targetHipY = s.isSneaking ? sneakHipHeight : standHipHeight;
+        const targetHipY = isCrouching ? crouchHipHeight : standHipHeight;
         j.hips.position.y = THREE.MathUtils.lerp(j.hips.position.y, targetHipY, 0.15);
-        j.torso.rotation.x = THREE.MathUtils.lerp(j.torso.rotation.x, s.isSneaking ? 0.5 : 0, 0.1);
+        j.torso.rotation.x = THREE.MathUtils.lerp(j.torso.rotation.x, isCrouching ? 0.5 : 0, 0.1);
 
         const lerpFactor = 0.15;
+
+        // ... (Sitting Animation logic remains unchanged, omitting for brevity in this replace block if possible, but safer to include if needed. 
+        // Wait, replace_file_content replaces the BLOCK. I need to include the sitting logic if I'm replacing the whole function body or large chunk. 
+        // The instructions said "Replace the player controller logic". I will include the sitting logic to be safe.)
 
         if (isSitting) {
             // Vibing Pose
             const t = stateRoot.clock.getElapsedTime();
-
-            // Lower Hips to Seat Height
-            // Seat height is 2.2.
-            // Target Hip Y = 1.9 (Lowered "10% down" to sink in)
             j.hips.position.y = THREE.MathUtils.lerp(j.hips.position.y, 1.9, 0.1);
-
-            // Move hips BACK to reach backrest
-            // We moved the root forward to 2.0.
-            // Hips should stay relative to root (0.0) or slightly back (-0.2).
-            // Let's try 0.0 to be safe and avoid clipping.
             j.hips.position.z = THREE.MathUtils.lerp(j.hips.position.z, 0.0, 0.1);
-
-            // Lean back
             j.torso.rotation.x = THREE.MathUtils.lerp(j.torso.rotation.x, -0.3, 0.1);
-
-            // Head bobbing to music
             j.neck.rotation.x = Math.sin(t * 8) * 0.05;
             j.neck.rotation.y = Math.sin(t * 2) * 0.1;
-
-            // Arms spread out on sofa back
             j.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.z, 0.5, 0.1);
             j.leftArm.shoulder.rotation.y = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.y, -0.5, 0.1);
             j.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.z, -0.5, 0.1);
             j.rightArm.shoulder.rotation.y = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.y, 0.5, 0.1);
-
-            // Legs - Perfect Sit (90 degree bends)
-            // Hips bent -90 degrees (legs forward)
             j.leftHip.rotation.x = THREE.MathUtils.lerp(j.leftHip.rotation.x, -1.6, 0.1);
             j.rightHip.rotation.x = THREE.MathUtils.lerp(j.rightHip.rotation.x, -1.6, 0.1);
-
-            // Knees bent 90 degrees (legs down)
             j.leftKnee.rotation.x = THREE.MathUtils.lerp(j.leftKnee.rotation.x, 1.6, 0.1);
             j.rightKnee.rotation.x = THREE.MathUtils.lerp(j.rightKnee.rotation.x, 1.6, 0.1);
-
-            // Slight spread
             j.leftHip.rotation.z = THREE.MathUtils.lerp(j.leftHip.rotation.z, -0.15, 0.1);
             j.rightHip.rotation.z = THREE.MathUtils.lerp(j.rightHip.rotation.z, 0.15, 0.1);
-
-            return; // Skip other animations
+            return;
         }
 
         if (s.isWaving) {
@@ -456,7 +420,6 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
             j.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.z, 0.2, lerpFactor);
             j.leftHip.rotation.x = THREE.MathUtils.lerp(j.leftHip.rotation.x, 0, lerpFactor);
             j.rightHip.rotation.x = THREE.MathUtils.lerp(j.rightHip.rotation.x, 0, lerpFactor);
-            // Reset spread
             j.leftHip.rotation.z = THREE.MathUtils.lerp(j.leftHip.rotation.z, 0, lerpFactor);
             j.rightHip.rotation.z = THREE.MathUtils.lerp(j.rightHip.rotation.z, 0, lerpFactor);
 
@@ -464,49 +427,58 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
                 s.isWaving = false;
             }
         } else if (isMoving && s.isGrounded) {
-            s.walkTime += dt * (s.isSneaking ? 8 : 12);
-            const legAmp = s.isSneaking ? 0.3 : 0.6;
-            const baseKneeBend = s.isSneaking ? 0.8 : 0.2;
-            const kneeAmp = s.isSneaking ? 0.2 : 0.3;
+            // Speed of animation loop depends on speed of movement
+            const animSpeed = isRunning ? 15 : (isCrouching ? 8 : 10);
+            s.walkTime += dt * animSpeed;
 
-            j.leftHip.rotation.x = Math.sin(s.walkTime) * legAmp - (s.isSneaking ? 0.5 : 0);
+            const legAmp = isCrouching ? 0.3 : (isRunning ? 0.8 : 0.6);
+            const baseKneeBend = isCrouching ? 0.8 : (isRunning ? 0.5 : 0.2);
+            const kneeAmp = isCrouching ? 0.2 : (isRunning ? 0.5 : 0.3);
+
+            const crouchHipOffset = isCrouching ? -0.5 : 0;
+
+            j.leftHip.rotation.x = Math.sin(s.walkTime) * legAmp + crouchHipOffset;
             j.leftKnee.rotation.x = Math.abs(Math.cos(s.walkTime)) * kneeAmp + baseKneeBend;
-            j.rightHip.rotation.x = Math.sin(s.walkTime + Math.PI) * legAmp - (s.isSneaking ? 0.5 : 0);
+
+            j.rightHip.rotation.x = Math.sin(s.walkTime + Math.PI) * legAmp + crouchHipOffset;
             j.rightKnee.rotation.x = Math.abs(Math.cos(s.walkTime + Math.PI)) * kneeAmp + baseKneeBend;
 
             // Reset spread
             j.leftHip.rotation.z = THREE.MathUtils.lerp(j.leftHip.rotation.z, 0, lerpFactor);
             j.rightHip.rotation.z = THREE.MathUtils.lerp(j.rightHip.rotation.z, 0, lerpFactor);
 
-            if (s.isSneaking) {
+            if (isCrouching) {
                 j.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.x, -0.5, lerpFactor);
                 j.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.x, -0.5, lerpFactor);
                 j.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.z, 0.8, lerpFactor);
                 j.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.z, -0.8, lerpFactor);
             } else {
-                j.leftArm.shoulder.rotation.x = Math.sin(s.walkTime + Math.PI) * 0.6;
-                j.rightArm.shoulder.rotation.x = Math.sin(s.walkTime) * 0.6;
+                const armAmp = isRunning ? 1.0 : 0.6;
+                j.leftArm.shoulder.rotation.x = Math.sin(s.walkTime + Math.PI) * armAmp;
+                j.rightArm.shoulder.rotation.x = Math.sin(s.walkTime) * armAmp;
                 j.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.z, 0.2, lerpFactor);
                 j.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.z, -0.2, lerpFactor);
             }
-            j.rightArm.elbow.rotation.z = THREE.MathUtils.lerp(j.rightArm.elbow.rotation.z, 0, lerpFactor);
+            j.rightArm.elbow.rotation.z = THREE.MathUtils.lerp(j.rightArm.elbow.rotation.z, isRunning ? -1.5 : 0, lerpFactor); // Bend elbows on run
+            j.leftArm.elbow.rotation.z = THREE.MathUtils.lerp(j.leftArm.elbow.rotation.z, isRunning ? 1.5 : 0, lerpFactor);
+
         } else if (!s.isGrounded) {
+            // Jump Pose
             j.leftHip.rotation.x = THREE.MathUtils.lerp(j.leftHip.rotation.x, 0.5, lerpFactor);
             j.rightHip.rotation.x = THREE.MathUtils.lerp(j.rightHip.rotation.x, 0.2, lerpFactor);
             j.leftKnee.rotation.x = THREE.MathUtils.lerp(j.leftKnee.rotation.x, 0.8, lerpFactor);
             j.rightKnee.rotation.x = THREE.MathUtils.lerp(j.rightKnee.rotation.x, 0.1, lerpFactor);
             j.rightArm.elbow.rotation.z = THREE.MathUtils.lerp(j.rightArm.elbow.rotation.z, 0, lerpFactor);
-
-            // Reset spread
             j.leftHip.rotation.z = THREE.MathUtils.lerp(j.leftHip.rotation.z, 0, lerpFactor);
             j.rightHip.rotation.z = THREE.MathUtils.lerp(j.rightHip.rotation.z, 0, lerpFactor);
         } else {
+            // Idle
             s.idleTime += dt;
             const breath = Math.sin(s.idleTime * 1.5);
             const microMovement = Math.cos(s.idleTime * 0.8);
 
-            const baseKneeBend = s.isSneaking ? 0.9 : 0.1 + breath * 0.02;
-            const baseHipBend = s.isSneaking ? -0.6 : -0.1 - breath * 0.02;
+            const baseKneeBend = isCrouching ? 0.9 : 0.1 + breath * 0.02;
+            const baseHipBend = isCrouching ? -0.6 : -0.1 - breath * 0.02;
 
             j.leftHip.rotation.x = THREE.MathUtils.lerp(j.leftHip.rotation.x, baseHipBend, lerpFactor);
             j.rightHip.rotation.x = THREE.MathUtils.lerp(j.rightHip.rotation.x, baseHipBend + microMovement * 0.02, lerpFactor);
@@ -517,10 +489,10 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
             j.leftHip.rotation.z = THREE.MathUtils.lerp(j.leftHip.rotation.z, 0, lerpFactor);
             j.rightHip.rotation.z = THREE.MathUtils.lerp(j.rightHip.rotation.z, 0, lerpFactor);
 
-            j.torso.rotation.x = THREE.MathUtils.lerp(j.torso.rotation.x, (s.isSneaking ? 0.5 : 0) + breath * 0.03, lerpFactor);
+            j.torso.rotation.x = THREE.MathUtils.lerp(j.torso.rotation.x, (isCrouching ? 0.5 : 0) + breath * 0.03, lerpFactor);
             j.neck.rotation.x = THREE.MathUtils.lerp(j.neck.rotation.x, -breath * 0.03 + microMovement * 0.02, lerpFactor);
 
-            if (s.isSneaking) {
+            if (isCrouching) {
                 j.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.x, -0.4 + breath * 0.05, lerpFactor);
                 j.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.x, -0.4 + breath * 0.05, lerpFactor);
                 j.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.z, 0.5, lerpFactor);
