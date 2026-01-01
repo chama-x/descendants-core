@@ -28,8 +28,8 @@ export class ClientBrain {
             isThinking: false,
             lastThoughtTime: 0
         };
-        // 15 requests per 60 seconds (Limit for Gemini Flash Free Tier)
-        this.rateLimiter = new RateLimiter(15, 60);
+        // 25 requests per 60 seconds (Groq Cloud Free Tier allows 30, using 25 for headroom)
+        this.rateLimiter = new RateLimiter(25, 60);
     }
 
     public async update(

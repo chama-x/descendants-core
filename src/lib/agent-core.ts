@@ -1,4 +1,4 @@
-import { getGeminiClient, rotateGeminiKey } from '@/lib/gemini';
+import { getGroqClient, getActiveModel } from '@/lib/groq';
 
 export interface NearbyEntity {
     type: string; // e.g., 'PLAYER', 'AGENT', 'OBSTACLE'
@@ -25,80 +25,85 @@ export async function processAgentThought(context: AgentContext): Promise<string
         context.nearbyEntities.map(e => `| ${e.type} | ${e.id || '-'} | ${e.distance}m | ${e.status || '-'} |`).join('\n')
         : "No entities nearby.";
 
-    const prompt = `
-    You are an AI agent in a 3D world.
-    
-    ## Context
-    **Position**: {x: ${context.position.x.toFixed(1)}, y: ${context.position.y.toFixed(1)}, z: ${context.position.z.toFixed(1)}}
-    **Behavior**: ${context.currentBehavior}
+    const systemPrompt = `You are an AI agent in a 3D world. You make decisions based on your perception.
 
-    ## Perception (Visual)
-    ${entityTable}
+## Rules
+- **FOLLOW**: If you see a 'PLAYER' (<20m), decide to 'FOLLOW' them to say hello.
+- **WANDER**: If no specific entities of interest, explore.
+- **WAIT**: If idle or thinking.
 
-    ## Task
-    Decide your next action based on the perception above.
-    
-    ## Output Format (JSON ONLY)
-    { 
-      "action": "MOVE_TO" | "WAIT" | "WANDER" | "FOLLOW", 
-      "targetId"?: "id_of_entity_to_follow", 
-      "target"?: {x, y, z}, 
-      "thought": "brief reasoning" 
-    }
-    
-    ## Rules
-    - **FOLLOW**: If you see a 'PLAYER' (< 20m), you MUST decided to 'FOLLOW' them to say hello.
-    - **WANDER**: If no specific entities of interest, explore.
-    - **WAIT**: If idle or thinking.
-  `;
+## Output Format
+Respond ONLY with valid JSON in this exact format:
+{
+  "action": "MOVE_TO" | "WAIT" | "WANDER" | "FOLLOW",
+  "targetId": "id_of_entity_to_follow (optional)",
+  "target": {"x": number, "y": number, "z": number} (optional),
+  "thought": "brief reasoning"
+}`;
+
+    const userPrompt = `## Current State
+**Position**: {x: ${context.position.x.toFixed(1)}, y: ${context.position.y.toFixed(1)}, z: ${context.position.z.toFixed(1)}}
+**Behavior**: ${context.currentBehavior}
+
+## Perception (Visual)
+${entityTable}
+
+Decide your next action.`;
 
     while (attempt < MAX_RETRIES) {
         try {
-            // Get the current client (refreshed on each loop iteration)
-            const client = getGeminiClient();
+            const client = getGroqClient();
+            const model = getActiveModel();
 
-            const response = await client.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: [
+            const response = await client.chat.completions.create({
+                model: model,
+                messages: [
                     {
-                        role: 'user',
-                        parts: [{ text: prompt }]
+                        role: "system",
+                        content: systemPrompt
+                    },
+                    {
+                        role: "user",
+                        content: userPrompt
                     }
-                ]
+                ],
+                temperature: 0.7,
+                max_tokens: 256, // Keep responses short for fast inference
+                response_format: { type: "json_object" }
             });
 
-            // Safety check for empty response
-            if (!response || !response.text) {
-                throw new Error("Empty response from Gemini");
+            const content = response.choices[0]?.message?.content;
+            if (!content) {
+                throw new Error("Empty response from Groq");
             }
 
-            // SDK Compatibility: Handle .text as function (v0) or property (v1)
-            const txt = (response as any).text;
-            return typeof txt === 'function' ? txt.call(response) : String(txt);
+            return content;
 
         } catch (error: any) {
-            console.error(`Gemini API Error (Attempt ${attempt + 1}/${MAX_RETRIES}):`, error.message || error);
+            console.error(`Groq API Error (Attempt ${attempt + 1}/${MAX_RETRIES}):`, error.message || error);
 
-            // Check for 429 or similar rate limit errors
+            // Check for rate limit errors
             const isRateLimit =
                 JSON.stringify(error).includes("429") ||
-                JSON.stringify(error).includes("quota") ||
-                JSON.stringify(error).includes("RESOURCE_EXHAUSTED");
+                JSON.stringify(error).includes("rate_limit") ||
+                JSON.stringify(error).includes("quota");
 
             if (isRateLimit) {
-                console.warn("Rate limit hit. Rotating API key and retrying...");
-                rotateGeminiKey();
-                // Wait a bit before retrying to prevent rapid-fire cycling if all keys are bad
-                await sleep(1000);
+                console.warn("Rate limit hit. Waiting before retry...");
+                // Exponential backoff: 2s, 4s, 8s
+                await sleep(2000 * Math.pow(2, attempt));
             } else {
-                // If it's not a rate limit, maybe we shouldn't retry? 
-                // Or retry anyway for transient network issues?
-                // Let's retry only on rate limits for now to be safe, or just throw.
-                // Actually, for demo stability, let's retry once more for network blips.
-                if (attempt === MAX_RETRIES - 1) throw error;
+                // For non-rate-limit errors, wait briefly and retry
+                if (attempt < MAX_RETRIES - 1) {
+                    await sleep(1000);
+                }
             }
 
             attempt++;
+
+            if (attempt >= MAX_RETRIES) {
+                throw new Error("Failed to generate thought after multiple attempts.");
+            }
         }
     }
 
