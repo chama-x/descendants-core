@@ -18,7 +18,7 @@ export default function AIRobot({
 }) {
     const groupRef = useRef<THREE.Group>(null);
     const joints = useRef<any>({});
-    const { vehicle, brain } = useYukaAI(groupRef, playerRef, joints);
+    const { vehicle, brain } = useYukaAI(groupRef, playerRef, joints, agentId);
 
     // HUD State (for reactive updates)
     const [hudState, setHudState] = useState({
@@ -26,6 +26,8 @@ export default function AIRobot({
         isThinking: false,
         model: 'Loading...'
     });
+
+    const [distanceToPlayer, setDistanceToPlayer] = useState(100);
 
     // Sync brain state to HUD every 500ms
     useEffect(() => {
@@ -41,6 +43,23 @@ export default function AIRobot({
         return () => clearInterval(interval);
     }, [brain]);
 
+    // Check Distance (Throttled via simple frame skip or just ref updating)
+    // Actually, setting state in useFrame is bad.
+    // Better: Update a ref, and use CSS opacity based on that?
+    // No, React re-render needed for conditionals.
+    // Let's use a throttled interval for distance check to save perf.
+    useEffect(() => {
+        const distInterval = setInterval(() => {
+            if (groupRef.current && playerRef.current) {
+                const d = groupRef.current.position.distanceTo(playerRef.current.position);
+                setDistanceToPlayer(d);
+            }
+        }, 200);
+        return () => clearInterval(distInterval);
+    }, [playerRef]);
+
+    const showDetails = distanceToPlayer < 15; // Show thoughts when < 15m
+
     const { bodyMat, jointMat, glowMat } = useMemo(() => {
         const mats = createMaterials();
         const redGlow = new THREE.MeshBasicMaterial({ color: 0xff0000, toneMapped: false });
@@ -53,75 +72,110 @@ export default function AIRobot({
             <Html
                 position={[0, 8, 0]}
                 center
-                distanceFactor={15}
+                distanceFactor={12} // Scaled up (was 15)
                 occlude
                 style={{
                     pointerEvents: 'none',
                     userSelect: 'none',
                 }}
             >
+                {/* Main HUD Container - Scaled Up */}
                 <div style={{
-                    background: 'rgba(0, 0, 0, 0.85)',
-                    color: '#fff',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    fontFamily: 'monospace',
-                    fontSize: '11px',
-                    minWidth: '180px',
-                    maxWidth: '250px',
-                    border: hudState.isThinking ? '2px solid #00ff88' : '1px solid #444',
-                    boxShadow: hudState.isThinking ? '0 0 10px #00ff88' : 'none',
-                    transition: 'all 0.3s ease'
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '4px',
                 }}>
-                    {/* Model Badge */}
+                    {/* 1. Name Badge (Always Visible, larger) */}
                     <div style={{
+                        background: 'rgba(0, 0, 0, 0.6)',
+                        backdropFilter: 'blur(4px)',
+                        color: '#fff',
+                        padding: '6px 12px',
+                        borderRadius: '20px',
+                        fontFamily: 'sans-serif',
+                        fontSize: '16px', // Larger
+                        fontWeight: 'bold',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                        whiteSpace: 'nowrap',
                         display: 'flex',
-                        justifyContent: 'space-between',
                         alignItems: 'center',
-                        marginBottom: '6px',
-                        paddingBottom: '4px',
-                        borderBottom: '1px solid #333'
+                        gap: '8px'
                     }}>
-                        <span style={{ color: '#888', fontSize: '9px' }}>{agentId}</span>
+                        <span>{agentId}</span>
                         <span style={{
-                            background: '#1a1a2e',
-                            color: '#00d4ff',
+                            background: '#0070f3',
+                            color: 'white',
                             padding: '2px 6px',
                             borderRadius: '4px',
-                            fontSize: '9px',
-                            fontWeight: 'bold'
-                        }}>
-                            {hudState.model}
-                        </span>
+                            fontSize: '10px',
+                            textTransform: 'uppercase'
+                        }}>AI</span>
                     </div>
 
-                    {/* Status */}
+                    {/* 2. Thought Bubble (Proximity Only) */}
                     <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        marginBottom: '4px'
+                        opacity: showDetails ? 1 : 0,
+                        transform: showDetails ? 'translateY(0)' : 'translateY(10px)',
+                        transition: 'all 0.3s ease',
+                        pointerEvents: showDetails ? 'auto' : 'none',
+
+                        background: 'rgba(10, 10, 10, 0.9)',
+                        color: '#eee',
+                        padding: '12px',
+                        borderRadius: '12px',
+                        border: hudState.isThinking ? '2px solid #00ff88' : '1px solid #444',
+                        boxShadow: hudState.isThinking ? '0 0 15px rgba(0, 255, 136, 0.3)' : '0 4px 12px rgba(0,0,0,0.5)',
+                        width: '280px',
+                        marginTop: '8px',
+                        position: 'relative'
                     }}>
-                        <span style={{
-                            width: '8px',
-                            height: '8px',
-                            borderRadius: '50%',
-                            background: hudState.isThinking ? '#00ff88' : '#666',
-                            animation: hudState.isThinking ? 'pulse 1s infinite' : 'none'
+                        {/* Triangle Pointer */}
+                        <div style={{
+                            position: 'absolute',
+                            top: '-6px',
+                            left: '50%',
+                            transform: 'translateX(-50%) rotate(45deg)',
+                            width: '12px',
+                            height: '12px',
+                            background: hudState.isThinking ? '#00ff88' : '#444',
+                            borderLeft: '1px solid transparent',
+                            borderTop: '1px solid transparent',
+                            zIndex: -1
                         }} />
-                        <span style={{ color: hudState.isThinking ? '#00ff88' : '#888', fontSize: '10px' }}>
-                            {hudState.isThinking ? 'Thinking...' : 'Idle'}
-                        </span>
-                    </div>
 
-                    {/* Thought */}
-                    <div style={{
-                        color: '#ddd',
-                        fontSize: '10px',
-                        lineHeight: '1.3',
-                        wordBreak: 'break-word'
-                    }}>
-                        "{hudState.thought.length > 80 ? hudState.thought.substring(0, 77) + '...' : hudState.thought}"
+                        {/* Status Header */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            marginBottom: '8px',
+                            fontSize: '11px',
+                            color: '#888',
+                            borderBottom: '1px solid #333',
+                            paddingBottom: '4px'
+                        }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{
+                                    width: '8px', height: '8px', borderRadius: '50%',
+                                    background: hudState.isThinking ? '#00ff88' : '#555',
+                                    boxShadow: hudState.isThinking ? '0 0 5px #00ff88' : 'none',
+                                    transition: 'background 0.3s'
+                                }} />
+                                {hudState.isThinking ? 'PROCESSING...' : 'IDLE'}
+                            </span>
+                            <span style={{ color: '#00d4ff' }}>{hudState.model}</span>
+                        </div>
+
+                        {/* Thought Text */}
+                        <div style={{
+                            fontSize: '13px',
+                            lineHeight: '1.5',
+                            color: '#fff',
+                            fontWeight: 400
+                        }}>
+                            "{hudState.thought}"
+                        </div>
                     </div>
                 </div>
             </Html>

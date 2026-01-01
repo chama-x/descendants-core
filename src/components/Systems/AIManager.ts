@@ -7,6 +7,7 @@ class AIManager {
     public time: YUKA.Time;
     public vehicles: YUKA.Vehicle[] = [];
     private obstacles: YUKA.GameEntity[] = [];
+    private capabilities: Map<string, any> = new Map(); // Store capability engines by ID
 
     private constructor() {
         this.entityManager = new YUKA.EntityManager();
@@ -18,6 +19,20 @@ class AIManager {
             AIManager.instance = new AIManager();
         }
         return AIManager.instance;
+    }
+
+    public registerCapabilityEngine(agentId: string, engine: any) {
+        this.capabilities.set(agentId, engine);
+    }
+
+    public sendCommand(agentId: string, command: any) {
+        const engine = this.capabilities.get(agentId);
+        if (engine) {
+            console.log(`[AIManager] Dispatching command to ${agentId}:`, command);
+            engine.execute(command);
+        } else {
+            console.warn(`[AIManager] No capability engine found for ${agentId}`);
+        }
     }
 
     public update(delta: number) {

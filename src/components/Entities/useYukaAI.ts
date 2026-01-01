@@ -11,7 +11,8 @@ import { CapabilityEngine } from '@/lib/capability-engine';
 export function useYukaAI(
     groupRef: React.RefObject<THREE.Group | null>,
     playerRef: React.RefObject<THREE.Group | null>,
-    joints: React.MutableRefObject<any>
+    joints: React.MutableRefObject<any>,
+    agentId: string = 'agent-01'
 ) {
     const vehicleRef = useRef<YUKA.Vehicle | null>(null);
     const aiManager = AIManager.getInstance();
@@ -56,6 +57,9 @@ export function useYukaAI(
         // This handles all behaviors internally (Seek, Arrive, etc.)
         const engine = new CapabilityEngine(vehicle);
         capabilityEngineRef.current = engine;
+
+        // Register capability engine for direct command injection
+        aiManager.registerCapabilityEngine(agentId, engine);
 
         // 3. Register with Manager
         vehicleRef.current = vehicle;

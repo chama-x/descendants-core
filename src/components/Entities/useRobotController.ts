@@ -4,6 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import { useGameStore } from '@/store/gameStore';
 import { useInteractionStore } from '@/store/interactionStore';
 import AIManager from '../Systems/AIManager';
+import { WorldRegistry } from '@/lib/yuka-oracle';
 
 export interface Joints {
     hips?: THREE.Group;
@@ -22,8 +23,16 @@ export interface Joints {
 export function useRobotController(groupRef: React.RefObject<THREE.Group | null>) {
     const collidableMeshes = useGameStore((state) => state.collidableMeshes);
     const obstacles = useGameStore((state) => state.obstacles);
-    // const setDebugText = useGameStore((state) => state.setDebugText);
-    // const isLocked = useGameStore((state) => state.isLocked);
+
+    // Register Player in WorldRegistry for Agents to track
+    useEffect(() => {
+        if (groupRef.current) {
+            WorldRegistry.getInstance().registerDynamic('player-01', () => {
+                return groupRef.current ? groupRef.current.position : new THREE.Vector3();
+            });
+            console.log("Player registered in WorldRegistry as 'player-01'");
+        }
+    }, [groupRef]);
 
     const inputRef = useRef({ f: false, b: false, l: false, r: false, jump: false, sneak: false, wave: false });
     const state = useRef({
@@ -239,6 +248,16 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
         const dt = Math.min(delta, 0.1);
 
         // Input Processing
+        // Block movement if Interaction UI is open
+        if (isOpen) {
+            input.f = false;
+            input.b = false;
+            input.l = false;
+            input.r = false;
+            input.jump = false;
+            input.sneak = false;
+        }
+
         s.isSneaking = input.sneak;
         const currentSpeed = s.isSneaking ? sneakSpeed : walkSpeed;
         const moveDist = currentSpeed * dt;
@@ -274,7 +293,7 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
         const worldDx = moveDir.x * moveDist;
         const worldDz = moveDir.z * moveDist;
 
-        const isMoving = (inputX !== 0 || inputZ !== 0);
+        const isMoving = (inputX !== 0 || inputZ !== 0) && !isOpen; // Ensure isMoving is false if open
 
         if (isSitting && sitTargetPos.current && sitTargetRot.current) {
             // Smoothly move to sit target
