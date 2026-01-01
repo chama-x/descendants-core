@@ -124,37 +124,30 @@ export default function TimeSystem() {
 
     return (
         <>
-            {/* Ambient Light for base visibility */}
-            <ambientLight ref={ambientLightRef} intensity={0.1} />
-            <hemisphereLight ref={hemiLightRef} intensity={0.1} />
-
-            {/* Sun/Moon Directional Light - REAL SHADOWS RESTORED */}
+            <ambientLight ref={ambientLightRef} intensity={0.5} />
+            <hemisphereLight ref={hemiLightRef} intensity={0.5} />
             <directionalLight
                 ref={directionalLightRef}
-                castShadow={true}
-                intensity={1.0} // Boosted back to normal intensity for key light
-                shadow-mapSize={[512, 512]} // Optimized for 60FPS
-                shadow-camera-left={-40}
-                shadow-camera-right={40}
-                shadow-camera-top={40}
-                shadow-camera-bottom={-40}
+                castShadow
+                shadow-mapSize={[1024, 1024]}
+                shadow-camera-left={-300}
+                shadow-camera-right={300}
+                shadow-camera-top={300}
+                shadow-camera-bottom={-300}
                 shadow-bias={-0.0005}
             />
 
-            {/* Visual Sky (Sun) - Kept for atmosphere, but we rely on Environment for IBL */}
-            {/* Visual Sky (Sun) - Smoother Blending */}
+            {/* Visual Sky (Sun) */}
             <Sky
                 ref={skyRef}
                 distance={450000}
                 inclination={0}
                 azimuth={0.25}
-                mieDirectionalG={0.7} // Lower value = Softer sun glow (spreads light)
-                rayleigh={3}         // Higher = Deeper blue
-                mieCoefficient={0.005} // Standard haze
-                turbidity={10}       // Softens the horizon
             />
 
-            {/* Visual Moon */}
+            {/* Visual Moon (Manual position update needed if we want it to move without re-render) */}
+            {/* Since we removed state, we need to update Moon mesh position in useFrame too. */}
+            {/* Let's use a ref for the Moon mesh */}
             <MoonMesh timeRef={timeRef} />
 
             <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />

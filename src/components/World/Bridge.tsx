@@ -24,7 +24,7 @@ export default function Bridge({ start = [0, 5, -120], end = [0, 4, -300] }: Bri
     const { materials } = useMemo(() => {
         const mats = createMaterials();
         return { materials: mats };
-    }, []);
+    }, []); ``
 
     // Generate Instanced Meshes for Bridge Parts
     const { floorMatrices, railingMatrices } = useMemo(() => {
@@ -59,15 +59,14 @@ export default function Bridge({ start = [0, 5, -120], end = [0, 4, -300] }: Bri
         }
 
         return { floorMatrices: floor, railingMatrices: railing };
-    }, [startPos, endPos, segmentCount, width]);
+    }, [startPos, endPos, length, segmentCount, width]);
 
     // Register Collider
     useEffect(() => {
-        const collider = colliderRef.current;
-        if (collider) {
-            addCollidableMesh(collider);
+        if (colliderRef.current) {
+            addCollidableMesh(colliderRef.current);
             return () => {
-                removeCollidableMesh(collider.uuid);
+                if (colliderRef.current) removeCollidableMesh(colliderRef.current.uuid);
             };
         }
     }, [addCollidableMesh, removeCollidableMesh]);

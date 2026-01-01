@@ -8,10 +8,6 @@ export interface BrainState {
     thought: string;
     isThinking: boolean;
     lastThoughtTime: number;
-    // Chat State
-    isPausedForChat: boolean;
-    chatHistory: { role: 'user' | 'agent', text: string }[];
-    memo: string | null;
 }
 // Using CapabilityCommand directly from engine
 
@@ -22,63 +18,18 @@ export class ClientBrain {
     private oracle: YukaOracle;
     private id: string;
 
-    // Registry for global access (e.g. from UI)
-    private static registry: Map<string, ClientBrain> = new Map();
-
-    public static getBrain(id: string): ClientBrain | undefined {
-        return this.registry.get(id);
-    }
-
     constructor(id: string = 'agent-01') {
         this.id = id;
-        ClientBrain.registry.set(id, this); // Register self
         this.state = {
             thought: "Initializing neural pathways...",
             isThinking: false,
-            lastThoughtTime: 0,
-            isPausedForChat: false,
-            chatHistory: [],
-            memo: null
+            lastThoughtTime: 0
         };
         // Use Global Shared Limiter
         this.rateLimiter = GlobalRateLimiter.getInstance();
 
         // Neuro-Symbolic Bridge (Client Side)
         this.oracle = new YukaOracle();
-    }
-
-    // New Method: Chat with User
-    public async chat(message: string): Promise<string> {
-        this.state.isPausedForChat = true;
-        this.state.chatHistory.push({ role: 'user', text: message });
-
-        const context: AgentContext = {
-            position: { x: 0, y: 0, z: 0 }, // Position less relevant in chat? Or use last known?
-            nearbyEntities: [], // Blind in chat for now? Or keep last perceieved?
-            currentBehavior: 'CHATTING',
-            chatHistory: this.state.chatHistory,
-            memo: this.state.memo
-        };
-
-        try {
-            console.log(`[ClientBrain:${this.id}] Chatting...`);
-            const responseText = await generateAgentThought(context);
-            const cleanText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-
-            const decision = JSON.parse(cleanText);
-
-            if (decision.response) {
-                this.state.chatHistory.push({ role: 'agent', text: decision.response });
-                if (decision.memo) this.state.memo = decision.memo;
-                return decision.response;
-            } else {
-                return "I am thinking... (No text response provided)";
-            }
-
-        } catch (e) {
-            console.error("Chat Error", e);
-            return "Connection Error.";
-        }
     }
 
     public async update(
@@ -88,11 +39,6 @@ export class ClientBrain {
         allowedCommands: string[] = [],
         llmEnabled: boolean = true
     ): Promise<CapabilityCommand | null> {
-
-        // 1. If Paused for Chat, Freeeze Physical Actions
-        if (this.state.isPausedForChat) {
-            return { action: 'WAIT', thought: " conversing with user..." };
-        }
 
         // Rate Limiting Check
         if (this.state.isThinking || !this.rateLimiter.tryConsume()) {

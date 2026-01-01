@@ -93,7 +93,7 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
     const radius = 0.8;
 
     const joints = useRef<Joints>({});
-
+    const rb = useRef<any>(null);
 
     // Interaction
     const { openInteraction, isOpen, closeInteraction } = useInteractionStore();

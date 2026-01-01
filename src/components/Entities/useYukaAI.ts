@@ -1,11 +1,10 @@
-import { useRef, useEffect, useState } from 'react';
-/* eslint-disable react-hooks/immutability */
+import { useEffect, useRef } from 'react';
+import * as YUKA from 'yuka';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import * as YUKA from 'yuka';
-import { useGameStore } from '@/store/gameStore';
 import AIManager from '../Systems/AIManager';
-import { ClientBrain } from '@/components/Systems/ClientBrain';
+import { useGameStore } from '@/store/gameStore';
+import { ClientBrain } from '../Systems/ClientBrain';
 import { NearbyEntity } from '@/app/actions';
 import { CapabilityEngine } from '@/lib/capability-engine';
 

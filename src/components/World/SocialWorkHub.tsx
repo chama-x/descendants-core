@@ -3,30 +3,7 @@ import * as THREE from 'three';
 import { useGameStore } from '@/store/gameStore';
 import { createMaterials } from '../Systems/Materials';
 
-import { Text, useTexture } from '@react-three/drei';
-
-function CarpetMaterial() {
-    const carpetTexture = useTexture('/textures/luxury_carpet_diffuse.png');
-
-    useMemo(() => {
-        carpetTexture.wrapS = carpetTexture.wrapT = THREE.RepeatWrapping;
-        carpetTexture.repeat.set(12, 12); // Tiling for high detail
-        // carpetTexture.anisotropy = 16;
-    }, [carpetTexture]);
-
-    return (
-        <meshPhysicalMaterial
-            map={carpetTexture}
-            color="#2a2a2a"          // Deep dark grey base
-            roughness={1.0}          // Fully matte for fabric
-            metalness={0.0}
-            sheen={1.0}              // Simulates velvet/fur sheen
-            sheenColor={new THREE.Color('#999999')} // Light grey sheen for squishy look
-            sheenRoughness={0.5}
-            normalScale={new THREE.Vector2(0.5, 0.5)} // Soft normals if we had a normal map, but map handles some detail
-        />
-    );
-}
+import { Text } from '@react-three/drei';
 
 export default function SocialWorkHub() {
     const addCollidableMesh = useGameStore((state) => state.addCollidableMesh);
@@ -61,15 +38,13 @@ export default function SocialWorkHub() {
         const obs: { position: THREE.Vector3; radius: number }[] = [];
         const ints: { id: string; type: string; position: THREE.Vector3; rotation: THREE.Quaternion }[] = [];
 
-        // ... (Keep existing layout logic, but use hubCenter from outside)
-        // Note: hubCenter is now stable.
-
         // 1. Wooden Pergola Structure (Slats)
+        // Create a large frame: 100x60 area
         const pergolaHeight = 30; // Much higher roof
         const pergolaWidth = 100;
         const pergolaDepth = 60;
 
-        // ... (Same loop logic)
+        // Vertical Posts - Thinner and sleeker
         const postCountX = 4;
         const postCountZ = 3;
         for (let i = 0; i < postCountX; i++) {
@@ -78,12 +53,14 @@ export default function SocialWorkHub() {
                 const z = hubCenter.z - pergolaDepth / 2 + (j / (postCountZ - 1)) * pergolaDepth;
 
                 const matrix = new THREE.Matrix4();
+                // Thinner posts (0.8 width instead of 2)
                 matrix.compose(new THREE.Vector3(x, pergolaHeight / 2, z), new THREE.Quaternion(), new THREE.Vector3(0.8, pergolaHeight, 0.8));
                 pergolas.push(matrix);
                 obs.push({ position: new THREE.Vector3(x, hubCenter.y, z), radius: 0.6 });
             }
         }
 
+        // Roof Slats
         const slatCount = 40;
         for (let i = 0; i < slatCount; i++) {
             const z = hubCenter.z - pergolaDepth / 2 + (i / (slatCount - 1)) * pergolaDepth;
@@ -93,8 +70,8 @@ export default function SocialWorkHub() {
         }
 
         // 2. Lounge Area (Open Meeting Seatings)
-        // Removed unused parameters radius, openAngle from signature
-        const createSeatingGroup = (centerX: number, centerZ: number) => {
+        // Create groups of MASSIVE 3-seater sofas in a Square/Diamond layout
+        const createSeatingGroup = (centerX: number, centerZ: number, radius: number, openAngle: number) => {
             // Square layout: 4 sofas facing center
             const sofaCount = 4;
 
@@ -102,6 +79,7 @@ export default function SocialWorkHub() {
                 const angle = (i / sofaCount) * Math.PI * 2; // 0, 90, 180, 270
 
                 // Position: Push them out further for "friendly ground talk" space
+                // Radius needs to be large enough for these huge sofas
                 const groupRadius = 20;
                 const x = centerX + Math.cos(angle) * groupRadius;
                 const z = centerZ + Math.sin(angle) * groupRadius;
@@ -111,27 +89,32 @@ export default function SocialWorkHub() {
                 const pos = new THREE.Vector3(x, hubCenter.y, z);
 
                 // --- Build the MASSIVE 3-Seater Sofa ---
+                // 2x Scale requested
                 const sofaWidth = 18.0; // Huge
-                const sofaDepth = 4.5;  // Shallower
+                const sofaDepth = 4.5;  // Shallower (thinner butt area)
                 const seatHeight = 2.2; // Thicker/Higher
                 const backHeight = 4.5;
                 const armWidth = 1.5;
 
                 // 2. Three Distinct Seat Cushions
-                const cushionWidth = (sofaWidth - armWidth * 2) / 3;
+                const cushionWidth = (sofaWidth - armWidth * 2) / 3; // ~5.0
                 const cushionDepth = sofaDepth - 1.0;
 
                 for (let s = 0; s < 3; s++) {
+                    // -1, 0, 1 for Left, Center, Right
                     const offsetIndex = s - 1;
                     const localX = offsetIndex * cushionWidth;
 
                     const cushionPos = pos.clone().add(new THREE.Vector3(localX, seatHeight / 2, 0).applyQuaternion(rot));
 
                     const mat = new THREE.Matrix4();
+                    // Gap between cushions
                     mat.compose(cushionPos, rot, new THREE.Vector3(cushionWidth * 0.95, seatHeight, cushionDepth));
                     sofas.push(mat);
 
                     // Interaction Point
+                    // Move sitPos deeper (1.4) based on "slightly deeper" feedback
+                    // Usable seat is approx -0.75 to 1.75. 1.4 is comfortably inside.
                     const sitOffset = new THREE.Vector3(localX, 0, 1.4).applyQuaternion(rot);
                     const sitPos = pos.clone().add(sitOffset).setY(hubCenter.y);
 
@@ -147,16 +130,19 @@ export default function SocialWorkHub() {
                 for (let s = 0; s < 3; s++) {
                     const offsetIndex = s - 1;
                     const localX = offsetIndex * cushionWidth;
+
                     const backPos = pos.clone().add(new THREE.Vector3(localX, backHeight / 2, -sofaDepth / 2 + 0.75).applyQuaternion(rot));
 
                     const mat = new THREE.Matrix4();
                     mat.compose(backPos, rot, new THREE.Vector3(cushionWidth * 0.95, backHeight, 1.5));
                     sofaBacks.push(mat);
+
+                    // Collision for Backrest: Reduced radius to 0.8 (Absolute Minimal)
                     obs.push({ position: backPos.clone().setY(hubCenter.y), radius: 0.8 });
                 }
 
                 // 4. Armrests
-                const armHeight = 3.5;
+                const armHeight = 3.5; // Higher arms to match seat
                 const leftArmPos = pos.clone().add(new THREE.Vector3(-sofaWidth / 2 + armWidth / 2, armHeight / 2, 0).applyQuaternion(rot));
                 const rightArmPos = pos.clone().add(new THREE.Vector3(sofaWidth / 2 - armWidth / 2, armHeight / 2, 0).applyQuaternion(rot));
 
@@ -168,20 +154,31 @@ export default function SocialWorkHub() {
                 armR.compose(rightArmPos, rot, new THREE.Vector3(armWidth, armHeight, sofaDepth));
                 sofaArms.push(armR);
 
+                // Collision for Arms: Reduced radius to 0.8
                 obs.push({ position: leftArmPos.clone().setY(hubCenter.y), radius: 0.8 });
                 obs.push({ position: rightArmPos.clone().setY(hubCenter.y), radius: 0.8 });
             }
 
+            // Add a large central coffee table (Lower and wider)
             const tableMatrix = new THREE.Matrix4();
             tableMatrix.compose(new THREE.Vector3(centerX, hubCenter.y + 0.4, centerZ), new THREE.Quaternion(), new THREE.Vector3(12, 0.4, 12));
             tables.push(tableMatrix);
             obs.push({ position: new THREE.Vector3(centerX, hubCenter.y, centerZ), radius: 6.0 });
         };
 
-        createSeatingGroup(hubCenter.x, hubCenter.z);
-        createSeatingGroup(hubCenter.x - 45, hubCenter.z - 10);
-        createSeatingGroup(hubCenter.x + 45, hubCenter.z - 10);
-        createSeatingGroup(hubCenter.x, hubCenter.z + 30);
+        // Single Massive Central Group
+        createSeatingGroup(hubCenter.x, hubCenter.z, 0, 0);
+
+        // Add side groups if needed, but let's focus on one main "Social Pit"
+        // Maybe two smaller ones on sides?
+        // createSeatingGroup(hubCenter.x - 40, hubCenter.z, 0, 0);
+        // createSeatingGroup(hubCenter.x + 40, hubCenter.z, 0, 0);
+        // User said "match the scale with the social area".
+        // Let's do 3 groups like before but spaced out more.
+
+        createSeatingGroup(hubCenter.x - 45, hubCenter.z - 10, 0, 0);
+        createSeatingGroup(hubCenter.x + 45, hubCenter.z - 10, 0, 0);
+        createSeatingGroup(hubCenter.x, hubCenter.z + 30, 0, 0);
 
         // 3. Work Tables
         const tablePositions = [
@@ -199,42 +196,40 @@ export default function SocialWorkHub() {
         return { pergolaMatrices: pergolas, sofaMatrices: sofas, sofaBackMatrices: sofaBacks, sofaArmMatrices: sofaArms, tableMatrices: tables, obstacles: obs, interactables: ints };
     }, [hubCenter]);
 
-    // Apply Instances LayoutEffects
+    // Update Instances
     React.useLayoutEffect(() => {
         if (pergolaRef.current) {
-            pergolaMatrices.forEach((mat, i) => pergolaRef.current!.setMatrixAt(i, mat));
+            pergolaMatrices.forEach((m, i) => pergolaRef.current!.setMatrixAt(i, m));
             pergolaRef.current.instanceMatrix.needsUpdate = true;
         }
         if (sofaRef.current) {
-            sofaMatrices.forEach((mat, i) => sofaRef.current!.setMatrixAt(i, mat));
+            sofaMatrices.forEach((m, i) => sofaRef.current!.setMatrixAt(i, m));
             sofaRef.current.instanceMatrix.needsUpdate = true;
         }
         if (sofaBackRef.current) {
-            sofaBackMatrices.forEach((mat, i) => sofaBackRef.current!.setMatrixAt(i, mat));
+            sofaBackMatrices.forEach((m, i) => sofaBackRef.current!.setMatrixAt(i, m));
             sofaBackRef.current.instanceMatrix.needsUpdate = true;
         }
         if (sofaArmRef.current) {
-            sofaArmMatrices.forEach((mat, i) => sofaArmRef.current!.setMatrixAt(i, mat));
+            sofaArmMatrices.forEach((m, i) => sofaArmRef.current!.setMatrixAt(i, m));
             sofaArmRef.current.instanceMatrix.needsUpdate = true;
         }
         if (tableRef.current) {
-            tableMatrices.forEach((mat, i) => tableRef.current!.setMatrixAt(i, mat));
+            tableMatrices.forEach((m, i) => tableRef.current!.setMatrixAt(i, m));
             tableRef.current.instanceMatrix.needsUpdate = true;
         }
     }, [pergolaMatrices, sofaMatrices, sofaBackMatrices, sofaArmMatrices, tableMatrices]);
 
     // Register Ground & Obstacles & Interactables
     useEffect(() => {
-        const ground = groundRef.current; // Capture ref
-        if (ground) {
-            addCollidableMesh(ground);
+        if (groundRef.current) {
+            addCollidableMesh(groundRef.current);
         }
         addObstacles(obstacles);
         addInteractables(interactables);
 
         return () => {
-            // Use captured variable
-            if (ground) removeCollidableMesh(ground.uuid);
+            if (groundRef.current) removeCollidableMesh(groundRef.current.uuid);
             removeObstacles(obstacles);
             removeInteractables(interactables.map(i => i.id));
         };
@@ -242,16 +237,16 @@ export default function SocialWorkHub() {
 
     return (
         <group>
-            {/* Floor - Premium Plush Carpet */}
+            {/* Floor - Wood Decking instead of Concrete */}
             <mesh ref={groundRef} position={[hubCenter.x, hubCenter.y - 1, hubCenter.z]} receiveShadow>
                 <boxGeometry args={[hubSize, 2, hubSize]} />
-                <CarpetMaterial />
+                <primitive object={materials.wood} attach="material" />
             </mesh>
 
             {/* Pergola Structure */}
             <instancedMesh ref={pergolaRef} args={[undefined, undefined, pergolaMatrices.length]} castShadow receiveShadow>
                 <boxGeometry args={[1, 1, 1]} />
-                <meshStandardMaterial color="#8B4513" roughness={0.9} />
+                <primitive object={materials.wood} attach="material" />
             </instancedMesh>
 
             {/* Sofas (Seats) - Warm Leather */}
@@ -275,7 +270,7 @@ export default function SocialWorkHub() {
             {/* Tables */}
             <instancedMesh ref={tableRef} args={[undefined, undefined, tableMatrices.length]} castShadow receiveShadow>
                 <boxGeometry args={[1, 1, 1]} />
-                <meshStandardMaterial color="#5c4033" roughness={0.5} />
+                <primitive object={materials.wood} attach="material" />
             </instancedMesh>
 
             {/* Concrete Wall Backing */}
