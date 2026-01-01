@@ -81,7 +81,7 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
 
     // Unified Physics Constants (Matching Agent Logic)
     const WALK_SPEED = 6.0;
-    const RUN_SPEED = 12.0;
+    const RUN_SPEED = 14.0; // Increased for "faster run"
     const CROUCH_SPEED = 2.5;
 
     const jumpForce = 20.0;
@@ -427,25 +427,47 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
                 s.isWaving = false;
             }
         } else if (isMoving && s.isGrounded) {
+
             // Speed of animation loop depends on speed of movement
             const animSpeed = isRunning ? 15 : (isCrouching ? 8 : 10);
             s.walkTime += dt * animSpeed;
 
-            const legAmp = isCrouching ? 0.3 : (isRunning ? 0.8 : 0.6);
-            const baseKneeBend = isCrouching ? 0.8 : (isRunning ? 0.5 : 0.2);
-            const kneeAmp = isCrouching ? 0.2 : (isRunning ? 0.5 : 0.3);
+            const legAmp = isCrouching ? 0.3 : (isRunning ? 1.0 : 0.6);
+            const baseKneeBend = isCrouching ? 0.8 : (isRunning ? 0.6 : 0.2);
+            const kneeAmp = isCrouching ? 0.2 : (isRunning ? 0.6 : 0.3);
 
             const crouchHipOffset = isCrouching ? -0.5 : 0;
 
+            // Bobbing scale - Sprint has higher "flight phase"
+            const bobScale = isRunning ? 0.4 : 0.15;
+            const bobFreq = isRunning ? 2 : 2; // Both bounce twice per cycle
+            j.hips.position.y = THREE.MathUtils.lerp(j.hips.position.y, (isCrouching ? 2.8 : 3.5) + Math.sin(s.walkTime * bobFreq) * bobScale, lerpFactor);
+
+            // --- Biomechanical Rotations ---
+            // 1. Hip Yaw: Hips rotate to extend stride (Left leg forward = Hips Turn Right)
+            const hipYawAmp = isRunning ? 0.15 : 0.08;
+            j.hips.rotation.y = Math.sin(s.walkTime) * -hipYawAmp;
+
+            // 2. Hip Roll: Hips drop on the swing side (Trendelenburg sign-lite)
+            const hipRollAmp = isRunning ? 0.05 : 0.08;
+            j.hips.rotation.z = Math.cos(s.walkTime) * hipRollAmp;
+
+            // 3. Torso Counter-Rotation: Shoulders rotate opposite to hips
+            const torsoYawAmp = isRunning ? 0.3 : 0.15;
+            j.torso.rotation.y = Math.sin(s.walkTime) * torsoYawAmp;
+
+            // Legs
             j.leftHip.rotation.x = Math.sin(s.walkTime) * legAmp + crouchHipOffset;
             j.leftKnee.rotation.x = Math.abs(Math.cos(s.walkTime)) * kneeAmp + baseKneeBend;
 
             j.rightHip.rotation.x = Math.sin(s.walkTime + Math.PI) * legAmp + crouchHipOffset;
             j.rightKnee.rotation.x = Math.abs(Math.cos(s.walkTime + Math.PI)) * kneeAmp + baseKneeBend;
 
-            // Reset spread
-            j.leftHip.rotation.z = THREE.MathUtils.lerp(j.leftHip.rotation.z, 0, lerpFactor);
-            j.rightHip.rotation.z = THREE.MathUtils.lerp(j.rightHip.rotation.z, 0, lerpFactor);
+            // Reset spread (overridden by Hip Roll above, so we modify this)
+            // Actually, we should ADD spread if needed, but let's keep it simple.
+            // Hip Roll handles the sway now.
+            // j.leftHip.rotation.z = ... 
+
 
             if (isCrouching) {
                 j.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.x, -0.5, lerpFactor);
@@ -453,11 +475,41 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
                 j.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.z, 0.8, lerpFactor);
                 j.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.z, -0.8, lerpFactor);
             } else {
-                const armAmp = isRunning ? 1.0 : 0.6;
+                const armAmp = isRunning ? 1.2 : 0.6;
                 j.leftArm.shoulder.rotation.x = Math.sin(s.walkTime + Math.PI) * armAmp;
                 j.rightArm.shoulder.rotation.x = Math.sin(s.walkTime) * armAmp;
-                j.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.z, 0.2, lerpFactor);
-                j.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.z, -0.2, lerpFactor);
+
+                // TUCK ARMS IN: Negative Z to pull slightly across/down
+                const armTuck = isRunning ? -0.2 : 0.2;
+                j.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.z, armTuck, lerpFactor);
+                j.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.z, -armTuck, lerpFactor);
+
+                // DYNAMIC YAW (Hand-to-Cheek Mechanism)
+                // We want Internal Rotation (Hand In) when Arm is Swing Forward (Flexion).
+                // Left Arm: Swing is sin(t + PI). Max Forward is +1.
+                // We want Max Inward Rotation (-Y) at that peak.
+                // So: -1 * (SwingPhase + 1) * magnitude
+
+                const yawAmp = isRunning ? 0.6 : 0.1;
+                const yawBias = isRunning ? -0.5 : 0; // Base internal rotation
+
+                // Left: Forward = sin(t + PI). Inward = -Y.
+                const leftSwing = Math.sin(s.walkTime + Math.PI);
+                // Map [-1, 1] to [0, 1] (Back to Front) -> (leftSwing + 1) * 0.5
+                // We want more inward rotation as it comes forward.
+                const leftDynamicYaw = (leftSwing * 0.5 + 0.5) * -yawAmp + yawBias;
+
+                // Right: Forward = sin(t). Inward = +Y (Right arm mirrors).
+                const rightSwing = Math.sin(s.walkTime);
+                const rightDynamicYaw = (rightSwing * 0.5 + 0.5) * yawAmp - yawBias;
+
+                // Note: Right arm internal rotation is usually +Y? 
+                // Left internal is -Y?
+                // Left Arm X-axis points Left. +Y rotates thumb down/in? No, usually +Y is back. 
+                // Let's assume Left -Y is In, Right +Y is In.
+
+                j.leftArm.shoulder.rotation.y = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.y, leftDynamicYaw, lerpFactor);
+                j.rightArm.shoulder.rotation.y = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.y, rightDynamicYaw, lerpFactor);
             }
             j.rightArm.elbow.rotation.z = THREE.MathUtils.lerp(j.rightArm.elbow.rotation.z, isRunning ? -1.5 : 0, lerpFactor); // Bend elbows on run
             j.leftArm.elbow.rotation.z = THREE.MathUtils.lerp(j.leftArm.elbow.rotation.z, isRunning ? 1.5 : 0, lerpFactor);

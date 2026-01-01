@@ -151,14 +151,28 @@ function animateProcedural(vehicle: YUKA.Vehicle, joints: React.MutableRefObject
 
     if (speed > 0.1) {
         // --- MOVING ---
-        const isRunning = speed > 10.0;
-        walkTime.current += dt * (isRunning ? 15.0 : 10.0); // Tuned for 6.0 Walk / 12.0 Run
+        const isRunning = speed > 8.0; // Lowered threshold for responsiveness
+        walkTime.current += dt * (isRunning ? 15.0 : 10.0); // Polished cadence (was 18)
 
-        const legAmp = isRunning ? 0.8 : 0.6;
-        const kneeAmp = isRunning ? 0.5 : 0.3;
+        const legAmp = isRunning ? 1.0 : 0.6; // Bigger strides
+        const kneeAmp = isRunning ? 0.6 : 0.3; // High knees
 
-        // Hips Bob
-        j.hips.position.y = THREE.MathUtils.lerp(j.hips.position.y, 3.5 + Math.sin(walkTime.current * 2) * (isRunning ? 0.2 : 0.1), lerpFactor);
+        // Hips Bob (Flight Phase)
+        const bobScale = isRunning ? 0.35 : 0.15;
+        j.hips.position.y = THREE.MathUtils.lerp(j.hips.position.y, 3.5 + Math.sin(walkTime.current * 2) * bobScale, lerpFactor);
+
+        // --- Biomechanical Rotations ---
+        // 1. Hip Yaw
+        const hipYawAmp = isRunning ? 0.15 : 0.08;
+        j.hips.rotation.y = Math.sin(walkTime.current) * -hipYawAmp;
+
+        // 2. Hip Roll
+        const hipRollAmp = isRunning ? 0.05 : 0.08;
+        j.hips.rotation.z = Math.cos(walkTime.current) * hipRollAmp;
+
+        // 3. Torso Counter-Rotation
+        const torsoYawAmp = isRunning ? 0.3 : 0.15;
+        j.torso.rotation.y = Math.sin(walkTime.current) * torsoYawAmp;
 
         // Legs
         j.leftHip.rotation.x = Math.sin(walkTime.current) * legAmp;
@@ -167,12 +181,41 @@ function animateProcedural(vehicle: YUKA.Vehicle, joints: React.MutableRefObject
         j.rightHip.rotation.x = Math.sin(walkTime.current + Math.PI) * legAmp;
         j.rightKnee.rotation.x = Math.abs(Math.cos(walkTime.current + Math.PI)) * kneeAmp + 0.2;
 
-        // Arms
-        j.leftArm.shoulder.rotation.x = Math.sin(walkTime.current + Math.PI) * legAmp;
-        j.rightArm.shoulder.rotation.x = Math.sin(walkTime.current) * legAmp;
+        // Arms (Runner Arms)
+        const armAmp = isRunning ? 1.2 : 0.6; // Vigorous swing
+        j.leftArm.shoulder.rotation.x = Math.sin(walkTime.current + Math.PI) * armAmp;
+        j.rightArm.shoulder.rotation.x = Math.sin(walkTime.current) * armAmp;
+
+        // TUCK ARMS IN
+        const armTuck = isRunning ? -0.2 : 0.2;
+        j.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.z, armTuck, lerpFactor);
+        j.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.z, -armTuck, lerpFactor);
+
+        // DYNAMIC YAW (Hand-to-Cheek Mechanism)
+        const yawAmp = isRunning ? 0.6 : 0.1;
+        const yawBias = isRunning ? -0.5 : 0;
+
+        // Left Arm
+        const leftSwing = Math.sin(walkTime.current + Math.PI);
+        const leftDynamicYaw = (leftSwing * 0.5 + 0.5) * -yawAmp + yawBias;
+
+        // Right Arm (Mirrored)
+        const rightSwing = Math.sin(walkTime.current);
+        const rightDynamicYaw = (rightSwing * 0.5 + 0.5) * yawAmp - yawBias;
+
+        j.leftArm.shoulder.rotation.y = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.y, leftDynamicYaw, lerpFactor);
+        j.rightArm.shoulder.rotation.y = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.y, rightDynamicYaw, lerpFactor);
+
+        // Elbows (Bend when running)
+        // Resetting X-bend which might be default T-pose artifact from broken code before
+        // j.leftArm.elbow.rotation.x ... ignore
+
+        j.leftArm.elbow.rotation.z = THREE.MathUtils.lerp(j.leftArm.elbow.rotation.z, isRunning ? 1.5 : 0, lerpFactor);
+        j.rightArm.elbow.rotation.z = THREE.MathUtils.lerp(j.rightArm.elbow.rotation.z, isRunning ? -1.5 : 0, lerpFactor);
+
 
         // Lean into run
-        j.torso.rotation.x = THREE.MathUtils.lerp(j.torso.rotation.x, isRunning ? 0.3 : 0.1, lerpFactor);
+        j.torso.rotation.x = THREE.MathUtils.lerp(j.torso.rotation.x, isRunning ? 0.4 : 0.1, lerpFactor);
         j.neck.rotation.y = THREE.MathUtils.lerp(j.neck.rotation.y, 0, lerpFactor);
 
     } else {

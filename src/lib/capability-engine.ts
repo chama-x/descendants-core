@@ -66,7 +66,7 @@ export class CapabilityEngine {
     private POSTURE_SPEEDS = {
         'IDLE': 0,
         'WALK': 6.0,    // Matched to Player Jog
-        'RUN': 12.0,    // Matched to Player Sprint
+        'RUN': 14.0,    // Matched to Player Sprint (Was 12.0)
         'SNEAK': 2.5,
         'ALERT': 4.5
     };
