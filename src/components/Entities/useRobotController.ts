@@ -289,65 +289,124 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
             mesh.rotation.x = 0;
             mesh.rotation.z = 0;
 
-            if (input.wave && !s.isWaving) {
-                s.isWaving = true;
-                s.waveTimer = 0;
-            }
+            const WATER_SURFACE_Y = 0.0;
+            // Easier trigger: Enter swim mode when slightly submerged (Waist deep ~1.0m, or Knee ~0.5m)
+            const inWater = mesh.position.y < (WATER_SURFACE_Y - 0.8);
 
-            if (isMoving) {
-                const targetAngle = Math.atan2(moveDir.x, moveDir.z);
-                let diff = targetAngle - mesh.rotation.y;
-                while (diff > Math.PI) diff -= Math.PI * 2;
-                while (diff < -Math.PI) diff += Math.PI * 2;
-                mesh.rotation.y += diff * 10 * dt;
-            }
+            if (inWater) {
+                currentSpeed = 7.0; // Surface Swim speed
+                posture = 'SWIM';
+                s.posture = 'SWIM'; // FIX: Ensure animation state receives update!
 
-            // Collision
-            const proposedX = mesh.position.x + worldDx;
-            const proposedZ = mesh.position.z + worldDz;
-            let canMove = true;
+                // --- SURFACE SWIMMING (NO DIVING) ---
+                // Lock to surface height (Chest/Shoulders submerged)
+                const targetSurfaceY = WATER_SURFACE_Y - 0.75; // Raised slightly to show shoulders
+                // Smoothly bob at surface
+                const bob = Math.sin(stateRoot.clock.getElapsedTime() * 2) * 0.05;
+                mesh.position.y = THREE.MathUtils.lerp(mesh.position.y, targetSurfaceY + bob, 0.1);
+                s.velocity.y = 0; // No vertical velocity
 
-            for (const ob of obstacles) {
-                const distSq = (proposedX - ob.position.x) ** 2 + (proposedZ - ob.position.z) ** 2;
-                const minDist = radius + ob.radius;
-                if (distSq < minDist * minDist) {
-                    canMove = false;
-                    break;
-                }
-            }
-            if (canMove) {
-                mesh.position.x = proposedX;
-                mesh.position.z = proposedZ;
-            }
+                // 2. Drag (Water resistance) - Only XZ needed
+                s.velocity.x *= 0.92;
+                s.velocity.z *= 0.92;
 
-            // Gravity / Ground
-            let groundHeight = -10;
-            if (collidableMeshes.length > 0) {
-                const raycaster = new THREE.Raycaster();
-                const rayOrigin = mesh.position.clone();
-                rayOrigin.y += 50;
-                raycaster.set(rayOrigin, new THREE.Vector3(0, -1, 0));
-                const hits = raycaster.intersectObjects(collidableMeshes, true);
-                if (hits.length > 0) groundHeight = hits[0].point.y;
-            }
+                // 3. 2D Movement (Strictly Horizontal)
+                const swimForce = currentSpeed * 2.0;
 
-            const groundMeshY = groundHeight;
+                if (input.f) s.velocity.addScaledVector(camForward, swimForce * dt);
+                if (input.b) s.velocity.addScaledVector(camForward, -swimForce * dt);
+                if (input.l) s.velocity.addScaledVector(camRight, -swimForce * dt);
+                if (input.r) s.velocity.addScaledVector(camRight, swimForce * dt);
 
-            if (s.isGrounded) {
+                // No Vertical Controls (Jump can maybe jump out of water?)
                 if (input.jump) {
-                    s.velocity.y = jumpForce;
-                    s.isGrounded = false;
-                } else {
-                    s.velocity.y = 0;
-                    mesh.position.y = groundMeshY;
+                    // Optional: "Dolphin Jump" if moving fast? Or just ignore.
+                    // Let's allow jumping OUT of water if near edge? 
+                    // For now, strict surface swimming as requested.
                 }
+
+                // Cap Horizontal Velocity
+                const maxSwimSpeed = 8.0;
+                const horizontalVel = new THREE.Vector2(s.velocity.x, s.velocity.z);
+                if (horizontalVel.length() > maxSwimSpeed) {
+                    horizontalVel.setLength(maxSwimSpeed);
+                    s.velocity.x = horizontalVel.x;
+                    s.velocity.z = horizontalVel.y;
+                }
+
+                // Apply Position (XZ only handled here, Y handled by clamp above)
+                mesh.position.x += s.velocity.x * dt;
+                mesh.position.z += s.velocity.z * dt;
+
+                // Rotation (Face movement direction)
+                if (Math.abs(s.velocity.x) > 0.1 || Math.abs(s.velocity.z) > 0.1) {
+                    const targetAngle = Math.atan2(s.velocity.x, s.velocity.z);
+                    let diff = targetAngle - mesh.rotation.y;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    mesh.rotation.y += diff * 5 * dt;
+                }
+
+                s.isGrounded = false;
+
             } else {
-                s.velocity.y += gravity * dt;
-                mesh.position.y += s.velocity.y * dt;
-                if (mesh.position.y <= groundMeshY) {
-                    mesh.position.y = groundMeshY;
-                    s.isGrounded = true;
-                    s.velocity.y = 0;
+                // --- WALKING/RUNNING PHYSICS ---
+
+                if (isMoving) {
+                    const targetAngle = Math.atan2(moveDir.x, moveDir.z);
+                    let diff = targetAngle - mesh.rotation.y;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    mesh.rotation.y += diff * 10 * dt;
+                }
+
+                // Collision
+                const proposedX = mesh.position.x + worldDx;
+                const proposedZ = mesh.position.z + worldDz;
+                let canMove = true;
+
+                for (const ob of obstacles) {
+                    const distSq = (proposedX - ob.position.x) ** 2 + (proposedZ - ob.position.z) ** 2;
+                    const minDist = radius + ob.radius;
+                    if (distSq < minDist * minDist) {
+                        canMove = false;
+                        break;
+                    }
+                }
+                if (canMove) {
+                    mesh.position.x = proposedX;
+                    mesh.position.z = proposedZ;
+                }
+
+                // Gravity / Ground
+                let groundHeight = -10;
+                if (collidableMeshes.length > 0) {
+                    const raycaster = new THREE.Raycaster();
+                    const rayOrigin = mesh.position.clone();
+                    rayOrigin.y += 50;
+                    raycaster.set(rayOrigin, new THREE.Vector3(0, -1, 0));
+                    const hits = raycaster.intersectObjects(collidableMeshes, true);
+                    if (hits.length > 0) groundHeight = hits[0].point.y;
+                }
+
+                const groundMeshY = groundHeight;
+
+                if (s.isGrounded) {
+                    if (input.jump) {
+                        s.velocity.y = jumpForce;
+                        s.isGrounded = false;
+                    } else {
+                        s.velocity.y = 0;
+                        mesh.position.y = groundMeshY;
+                    }
+                } else {
+                    s.velocity.y += gravity * dt;
+                    mesh.position.y += s.velocity.y * dt;
+                    if (mesh.position.y <= groundMeshY) {
+                        mesh.position.y = groundMeshY;
+                        s.isGrounded = true;
+                        s.velocity.y = 0;
+                    }
                 }
             }
         }
@@ -369,10 +428,6 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
         j.torso.rotation.x = THREE.MathUtils.lerp(j.torso.rotation.x, isCrouching ? 0.5 : 0, 0.1);
 
         const lerpFactor = 0.15;
-
-        // ... (Sitting Animation logic remains unchanged, omitting for brevity in this replace block if possible, but safer to include if needed. 
-        // Wait, replace_file_content replaces the BLOCK. I need to include the sitting logic if I'm replacing the whole function body or large chunk. 
-        // The instructions said "Replace the player controller logic". I will include the sitting logic to be safe.)
 
         if (isSitting) {
             // Vibing Pose
@@ -426,6 +481,36 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
             if (s.waveTimer > 2.5) {
                 s.isWaving = false;
             }
+        } else if (s.posture === 'SWIM') {
+            // --- PROFESSIONAL FRONT CRAWL ANIMATION ---
+            s.walkTime += dt * 6.0;
+
+            // 1. Posture
+            j.hips.rotation.x = THREE.MathUtils.lerp(j.hips.rotation.x, 1.6, 0.1);
+            j.hips.position.y = THREE.MathUtils.lerp(j.hips.position.y, 4.2, 0.1);
+            j.neck.rotation.x = THREE.MathUtils.lerp(j.neck.rotation.x, -1.2, 0.1);
+
+            // 2. Body Roll
+            const bodyRoll = Math.sin(s.walkTime) * 0.4;
+            j.hips.rotation.z = bodyRoll;
+            j.torso.rotation.z = bodyRoll * 0.5;
+
+            // 3. Arms
+            j.leftArm.shoulder.rotation.x = -Math.PI / 2 + Math.sin(s.walkTime) * 1.5;
+            j.leftArm.shoulder.rotation.z = Math.max(0, -Math.cos(s.walkTime)) + 0.2;
+            j.leftArm.elbow.rotation.z = Math.max(0, -Math.cos(s.walkTime) * 1.5);
+
+            j.rightArm.shoulder.rotation.x = -Math.PI / 2 + Math.sin(s.walkTime + Math.PI) * 1.5;
+            j.rightArm.shoulder.rotation.z = -(Math.max(0, -Math.cos(s.walkTime + Math.PI)) + 0.2);
+            j.rightArm.elbow.rotation.z = -(Math.max(0, -Math.cos(s.walkTime + Math.PI) * 1.5));
+
+            // 4. Legs
+            const kickFreq = 12.0;
+            j.leftHip.rotation.x = Math.sin(stateRoot.clock.getElapsedTime() * kickFreq) * 0.3;
+            j.rightHip.rotation.x = Math.sin(stateRoot.clock.getElapsedTime() * kickFreq + Math.PI) * 0.3;
+            j.leftKnee.rotation.x = 0.3 + Math.sin(stateRoot.clock.getElapsedTime() * kickFreq) * 0.3;
+            j.rightKnee.rotation.x = 0.3 + Math.sin(stateRoot.clock.getElapsedTime() * kickFreq + Math.PI) * 0.3;
+
         } else if (isMoving && s.isGrounded) {
             // Speed of animation loop depends on speed of movement
             // Reduced to fix "legs moving too fast" (Sync with Physics Speed: Walk=6, Run=14)
@@ -442,6 +527,9 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
             const bobScale = isRunning ? 0.4 : 0.15;
             const bobFreq = isRunning ? 2 : 2; // Both bounce twice per cycle
             j.hips.position.y = THREE.MathUtils.lerp(j.hips.position.y, (isCrouching ? 2.8 : 3.5) + Math.sin(s.walkTime * bobFreq) * bobScale, lerpFactor);
+
+            // Reset Swim Rotation (Important!)
+            j.hips.rotation.x = THREE.MathUtils.lerp(j.hips.rotation.x, 0, lerpFactor);
 
             // --- Biomechanical Rotations ---
             // 1. Hip Yaw: Hips rotate to extend stride (Left leg forward = Hips Turn Right)
@@ -469,7 +557,7 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
             // Reset spread (overridden by Hip Roll above, so we modify this)
             // Actually, we should ADD spread if needed, but let's keep it simple.
             // Hip Roll handles the sway now.
-            // j.leftHip.rotation.z = ... 
+            // j.leftHip.rotation.z = ...
 
 
             if (isCrouching) {
@@ -501,9 +589,8 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
                 const rightSwing = Math.sin(s.walkTime);
                 const rightDynamicYaw = (rightSwing * 0.5 + 0.5) * yawAmp - yawBias;
 
-                // Note: Right arm internal rotation is usually +Y? 
+                // Note: Right arm internal rotation is usually +Y?
                 // Left internal is -Y?
-                // Left Arm X-axis points Left. +Y rotates thumb down/in? No, usually +Y is back. 
                 // Let's assume Left -Y is In, Right +Y is In.
 
                 j.leftArm.shoulder.rotation.y = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.y, leftDynamicYaw, lerpFactor);
@@ -522,7 +609,7 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
             j.leftHip.rotation.z = THREE.MathUtils.lerp(j.leftHip.rotation.z, 0, lerpFactor);
             j.rightHip.rotation.z = THREE.MathUtils.lerp(j.rightHip.rotation.z, 0, lerpFactor);
         } else {
-            // Idle
+            // --- IDLE ---
             s.idleTime += dt;
             const breath = Math.sin(s.idleTime * 1.5);
             const microMovement = Math.cos(s.idleTime * 0.8);
@@ -535,12 +622,11 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
             j.leftKnee.rotation.x = THREE.MathUtils.lerp(j.leftKnee.rotation.x, baseKneeBend, lerpFactor);
             j.rightKnee.rotation.x = THREE.MathUtils.lerp(j.rightKnee.rotation.x, baseKneeBend - microMovement * 0.02, lerpFactor);
 
-            // Reset spread
             j.leftHip.rotation.z = THREE.MathUtils.lerp(j.leftHip.rotation.z, 0, lerpFactor);
             j.rightHip.rotation.z = THREE.MathUtils.lerp(j.rightHip.rotation.z, 0, lerpFactor);
-
             j.torso.rotation.x = THREE.MathUtils.lerp(j.torso.rotation.x, (isCrouching ? 0.5 : 0) + breath * 0.03, lerpFactor);
             j.neck.rotation.x = THREE.MathUtils.lerp(j.neck.rotation.x, -breath * 0.03 + microMovement * 0.02, lerpFactor);
+            j.hips.rotation.x = THREE.MathUtils.lerp(j.hips.rotation.x, 0, lerpFactor);
 
             if (isCrouching) {
                 j.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(j.leftArm.shoulder.rotation.x, -0.4 + breath * 0.05, lerpFactor);
@@ -554,6 +640,7 @@ export function useRobotController(groupRef: React.RefObject<THREE.Group | null>
                 j.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(j.rightArm.shoulder.rotation.z, -0.2 - microMovement * 0.03, lerpFactor);
             }
             j.rightArm.elbow.rotation.z = THREE.MathUtils.lerp(j.rightArm.elbow.rotation.z, 0, lerpFactor);
+            j.leftArm.elbow.rotation.z = THREE.MathUtils.lerp(j.leftArm.elbow.rotation.z, 0, lerpFactor);
         }
     });
 

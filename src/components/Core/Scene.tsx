@@ -74,16 +74,16 @@ function CameraRig({ target }: { target: React.RefObject<THREE.Group | null> }) 
     useEffect(() => {
         const onMouseMove = (event: MouseEvent) => {
             if (!document.pointerLockElement) return;
-            
+
             // Apply sensitivity (base multiplier 0.002)
             const multiplier = 0.002 * sensitivity;
-            
+
             cameraState.current.yaw -= event.movementX * multiplier;
-            
+
             // Apply inverted mouse
             const pitchDelta = event.movementY * multiplier;
             cameraState.current.pitch -= invertedMouse ? -pitchDelta : pitchDelta;
-            
+
             const limit = Math.PI / 2 - 0.1;
             cameraState.current.pitch = Math.max(-limit, Math.min(limit, cameraState.current.pitch));
         };
@@ -133,7 +133,9 @@ function CameraRig({ target }: { target: React.RefObject<THREE.Group | null> }) 
         camera.position.x = robotPos.x - cx * Math.cos(cameraState.current.pitch); // eslint-disable-line react-hooks/immutability
         camera.position.z = robotPos.z - cz * Math.cos(cameraState.current.pitch); // eslint-disable-line react-hooks/immutability
         camera.position.y = robotPos.y + cy; // eslint-disable-line react-hooks/immutability
-        if (camera.position.y < 2.0) camera.position.y = 2.0; // eslint-disable-line react-hooks/immutability
+
+        // Removed clamp to allow underwater camera
+        // if (camera.position.y < 2.0) camera.position.y = 2.0; 
 
         camera.lookAt(robotPos);
     });
